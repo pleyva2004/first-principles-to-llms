@@ -1,0 +1,105 @@
+[
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## MDP foundations: Bellman equations, value iteration, tabular Q-learning\n\nWe implement a $4{\\times}4$ GridWorld MDP, run value iteration to a sup-norm tolerance of $10^{-6}$, verify the geometric convergence rate $\\gamma$ predicted by the contraction theorem, extract the greedy policy from $Q^*$, re-derive $V^*$ by policy iteration, run tabular Q-learning for 5000 episodes and confirm $\\|Q_t - Q^*\\|_\\infty\\to 0$, and close with REINFORCE on a tiny 3-state MDP --- a preview of Chapter 30.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "import numpy as np\nnp.random.seed(0)\n\n# 4x4 GridWorld. State 0..15 in row-major order. Goal = state 15 (bottom-right), absorbing.\n# Actions: 0=Up, 1=Down, 2=Left, 3=Right. Reward = -1 per step, +10 on entering goal.\nN = 4\nnS, nA = N*N, 4\nGOAL = nS - 1\n\ndef step_idx(s, a):\n    r, c = divmod(s, N)\n    if a == 0: r = max(r - 1, 0)\n    elif a == 1: r = min(r + 1, N - 1)\n    elif a == 2: c = max(c - 1, 0)\n    elif a == 3: c = min(c + 1, N - 1)\n    return r * N + c\n\nP = np.zeros((nS, nA, nS))\nR = np.zeros((nS, nA))\nfor s in range(nS):\n    for a in range(nA):\n        if s == GOAL:\n            P[s, a, s] = 1.0   # absorbing\n            R[s, a] = 0.0\n        else:\n            sp = step_idx(s, a)\n            P[s, a, sp] = 1.0\n            R[s, a] = 10.0 if sp == GOAL else -1.0\n\nprint(\"P shape:\", P.shape, \"row-stochastic:\", np.allclose(P.sum(-1), 1.0))\nprint(\"R shape:\", R.shape, \"min/max reward:\", R.min(), R.max())\nprint(\"Reward at (state 14, action Right):\", R[14, 3], \"  -> goal? yes\")\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Value iteration\n\nApply $V_{k+1} = \\mathcal{T}^* V_k$ until $\\|V_{k+1}-V_k\\|_\\infty < 10^{-6}$, with $\\gamma=0.9$. By the contraction theorem we expect the error $\\|V_k - V^*\\|_\\infty$ to decay like $\\gamma^k$, i.e. a straight line of slope $\\log\\gamma$ on a log-y plot.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "gamma = 0.9\nV = np.zeros(nS)\nerrs = []\nfor k in range(2000):\n    Q = R + gamma * (P @ V)               # shape (nS, nA)\n    V_new = Q.max(axis=1)\n    errs.append(np.max(np.abs(V_new - V)))\n    V = V_new\n    if errs[-1] < 1e-6:\n        break\n\nV_star = V.copy()\nQ_star = R + gamma * (P @ V_star)\nprint(f\"value iteration converged in {k+1} iterations, final delta={errs[-1]:.2e}\")\nprint(\"V* on the 4x4 grid (rounded):\")\nprint(np.round(V_star.reshape(N, N), 3))\n\n# Geometric-rate check: distance to V* should decay like gamma^k.\nV2 = np.zeros(nS)\ngaps = []\nfor k in range(60):\n    gaps.append(np.max(np.abs(V2 - V_star)))\n    V2 = (R + gamma * (P @ V2)).max(axis=1)\ngaps = np.array(gaps)\n\n# slope of log(gap) vs k, ignoring the tail where gap underflows to 0\nmask = gaps > 1e-12\nslope = np.polyfit(np.arange(len(gaps))[mask], np.log(gaps[mask] + 1e-300), 1)[0]\nprint(f\"empirical slope = {slope:.4f}, log(gamma) = {np.log(gamma):.4f}\")\n\ntry:\n    import matplotlib.pyplot as plt\n    fig, ax = plt.subplots(figsize=(5, 3))\n    ax.semilogy(gaps + 1e-16, \"o-\", label=\"||V_k - V*||\")\n    ax.semilogy(gaps[0] * gamma ** np.arange(len(gaps)),\n                \"--\", label=\"gamma^k bound\")\n    ax.set_xlabel(\"iteration k\"); ax.set_ylabel(\"sup-norm error\")\n    ax.legend(); fig.tight_layout()\n    plt.show()\nexcept Exception as e:\n    print(\"matplotlib unavailable:\", e)\n    for k, g in enumerate(gaps[:20]):\n        print(f\"k={k:2d}  gap={g:.3e}  bound={gaps[0]*gamma**k:.3e}\")\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Greedy policy from $Q^*$\n\nThe Bellman optimality equation says $\\pi^*(s) \\in \\arg\\max_a Q^*(s,a)$. We display the policy as a $4{\\times}4$ grid of arrows.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "arrows = [\"U\", \"D\", \"L\", \"R\"]\npi_star = Q_star.argmax(axis=1)\npi_star[GOAL] = -1   # absorbing -> mark goal\ngrid = np.array([arrows[a] if a >= 0 else \"G\" for a in pi_star]).reshape(N, N)\nprint(\"Greedy policy from Q* (G = absorbing goal):\")\nfor row in grid:\n    print(\"  \" + \"  \".join(row))\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Policy iteration\n\nAlternate exact policy evaluation $V^\\pi = (I - \\gamma P^\\pi)^{-1} r^\\pi$ with greedy improvement. Each evaluation step is exact, so we expect convergence in dramatically fewer outer iterations than value iteration.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "def policy_eval_exact(pi):\n    P_pi = P[np.arange(nS), pi]                    # (nS, nS)\n    r_pi = R[np.arange(nS), pi]                    # (nS,)\n    return np.linalg.solve(np.eye(nS) - gamma * P_pi, r_pi)\n\npi = np.zeros(nS, dtype=int)                       # start with all \"Up\"\nfor outer in range(50):\n    V_pi = policy_eval_exact(pi)\n    Q_pi = R + gamma * (P @ V_pi)\n    pi_new = Q_pi.argmax(axis=1)\n    if np.array_equal(pi_new, pi):\n        break\n    pi = pi_new\n\nV_pi_final = policy_eval_exact(pi)\nprint(f\"policy iteration converged after {outer+1} outer iterations\")\nprint(f\"||V_PI - V_VI||_inf = {np.max(np.abs(V_pi_final - V_star)):.2e}\")\nprint(\"greedy policies match VI:\", np.array_equal(pi[:GOAL], pi_star[:GOAL]))\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Tabular Q-learning\n\nWe run Watkins' Q-learning with $\\varepsilon$-greedy exploration ($\\varepsilon=0.1$) and per-pair step sizes $\\alpha_t = 1/(1+\\mathrm{visits}(s,a))$, satisfying the Robbins--Monro conditions $\\sum \\alpha_t = \\infty$, $\\sum \\alpha_t^2 <\\infty$ (Chapter 13). By the Watkins--Tsitsiklis theorem, $Q_t \\to Q^*$ almost surely.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "rng = np.random.default_rng(0)\nQhat   = np.zeros((nS, nA))\nvisits = np.zeros((nS, nA), dtype=int)\neps    = 0.1\nn_episodes, max_steps = 5000, 100\nreturns = np.zeros(n_episodes)\nerr_to_Qstar = []\n\nfor ep in range(n_episodes):\n    s = rng.integers(0, nS - 1)             # start anywhere except goal\n    G, disc = 0.0, 1.0\n    for t in range(max_steps):\n        a = rng.integers(nA) if rng.random() < eps else int(np.argmax(Qhat[s]))\n        sp = step_idx(s, a) if s != GOAL else s\n        r  = (10.0 if sp == GOAL else -1.0) if s != GOAL else 0.0\n        visits[s, a] += 1\n        alpha = 1.0 / visits[s, a]\n        target = r + gamma * (0.0 if s == GOAL else Qhat[sp].max())\n        Qhat[s, a] += alpha * (target - Qhat[s, a])\n        G += disc * r; disc *= gamma\n        s = sp\n        if s == GOAL: break\n    returns[ep] = G\n    if (ep + 1) % 250 == 0:\n        err_to_Qstar.append(np.max(np.abs(Qhat - Q_star)))\n\nprint(f\"final ||Qhat - Q*||_inf = {np.max(np.abs(Qhat - Q_star)):.3f}\")\nprint(f\"mean return last 200 episodes = {returns[-200:].mean():.3f}\")\ngreedy_policy = Qhat.argmax(axis=1); greedy_policy[GOAL] = -1\nprint(\"Greedy policy from learned Qhat:\")\ngrid = np.array([\"UDLR\"[a] if a >= 0 else \"G\" for a in greedy_policy]).reshape(N, N)\nfor row in grid: print(\"  \" + \"  \".join(row))\n\ntry:\n    import matplotlib.pyplot as plt\n    fig, axes = plt.subplots(1, 2, figsize=(9, 3))\n    win = 100\n    smooth = np.convolve(returns, np.ones(win)/win, mode=\"valid\")\n    axes[0].plot(smooth); axes[0].set_xlabel(\"episode\"); axes[0].set_ylabel(f\"return (smoothed, w={win})\")\n    axes[1].plot(np.arange(1, len(err_to_Qstar)+1)*250, err_to_Qstar, \"o-\")\n    axes[1].set_xlabel(\"episode\"); axes[1].set_ylabel(\"||Qhat - Q*||_inf\"); axes[1].set_yscale(\"log\")\n    fig.tight_layout(); plt.show()\nexcept Exception as e:\n    print(\"matplotlib unavailable:\", e)\n    print(\"error trajectory (every 250 ep):\", [round(x, 3) for x in err_to_Qstar])\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## REINFORCE on a tiny 3-state MDP (preview of Chapter 30)\n\nThree states, two actions, deterministic transitions. We parameterize $\\pi_\\theta(a\\mid s)$ as softmax over per-(s,a) logits and apply the Monte-Carlo policy-gradient (REINFORCE) update $\\theta \\leftarrow \\theta + \\eta \\sum_t G_t \\nabla_\\theta \\log \\pi_\\theta(a_t\\mid s_t)$. We expect convergence to the optimal expected return.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "nS3, nA3 = 3, 2\n# Transitions[s][a] = next_state. Rewards[s][a].\nT_next = np.array([[1, 2], [2, 0], [2, 2]])\nR3     = np.array([[0.0, 1.0], [2.0, 0.0], [5.0, -1.0]])\nGOAL3  = 2\ngamma3 = 0.9\n\n# Optimal value via VI for reference.\nV3 = np.zeros(nS3)\nfor _ in range(500):\n    Vn = np.array([max(R3[s, a] + gamma3 * (0.0 if s == GOAL3 else V3[T_next[s, a]])\n                       for a in range(nA3)) for s in range(nS3)])\n    if np.max(np.abs(Vn - V3)) < 1e-10: break\n    V3 = Vn\nV3_star = V3.copy()\nprint(\"V* (3-state) =\", np.round(V3_star, 3))\n\ndef softmax(x):\n    z = x - x.max()\n    e = np.exp(z)\n    return e / e.sum()\n\ntheta = np.zeros((nS3, nA3))\neta = 0.05\nn_ep, T_max = 200, 30\nep_returns = []\nrng2 = np.random.default_rng(0)\n\nfor ep in range(n_ep):\n    s = rng2.integers(nS3)\n    traj = []\n    for t in range(T_max):\n        probs = softmax(theta[s])\n        a = rng2.choice(nA3, p=probs)\n        r = R3[s, a]\n        sp = T_next[s, a]\n        traj.append((s, a, r, probs))\n        s = sp\n        if s == GOAL3: break\n    # Monte-Carlo returns\n    G = 0.0; Gs = []\n    for (_, _, r, _) in reversed(traj):\n        G = r + gamma3 * G\n        Gs.append(G)\n    Gs.reverse()\n    ep_returns.append(Gs[0] if Gs else 0.0)\n    # REINFORCE gradient ascent\n    for (s_t, a_t, _, p_t), G_t in zip(traj, Gs):\n        grad = -p_t.copy(); grad[a_t] += 1.0       # d log pi(a|s) / d theta_s\n        theta[s_t] += eta * G_t * grad\n\nprint(f\"mean return first 20 episodes  = {np.mean(ep_returns[:20]):.3f}\")\nprint(f\"mean return last 20 episodes   = {np.mean(ep_returns[-20:]):.3f}\")\nprint(\"learned policy probs:\")\nfor s in range(nS3):\n    print(f\"  s={s}: pi={np.round(softmax(theta[s]), 3)}\")\n\ntry:\n    import matplotlib.pyplot as plt\n    fig, ax = plt.subplots(figsize=(5, 3))\n    win = 20\n    smooth = np.convolve(ep_returns, np.ones(win)/win, mode=\"valid\")\n    ax.plot(smooth); ax.set_xlabel(\"episode\"); ax.set_ylabel(f\"return (smoothed, w={win})\")\n    fig.tight_layout(); plt.show()\nexcept Exception as e:\n    print(\"matplotlib unavailable:\", e)\n    print(\"returns (every 20 ep):\", [round(np.mean(ep_returns[i:i+20]), 2) for i in range(0, n_ep, 20)])\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Takeaways\n\n- The Bellman equations follow from $G_t = r_t + \\gamma G_{t+1}$ plus linearity of expectation (Chapter 10).\n- Both $\\mathcal{T}^\\pi$ and $\\mathcal{T}^*$ are $\\gamma$-contractions in sup norm; Banach's fixed-point theorem (Chapter 7) hands us value iteration with rate $\\gamma$.\n- Policy iteration alternates exact evaluation with greedy improvement; the deterministic policy space is finite, so termination is finite.\n- Tabular Q-learning is Robbins--Monro (Chapter 13) on the contraction $\\mathcal{T}^*$ with one-sample noise; convergence is almost-sure under the standard step-size and visitation conditions.\n- REINFORCE replaces tabular value updates with stochastic gradient ascent on $\\mathbb{E}_{\\pi_\\theta}[G_0]$ --- the launching point for Chapter 30 (advantage estimation, GAE) and Chapter 31 (actor-critic, PPO, the RLHF stack).\n"
+  ]
+ }
+]

@@ -1,0 +1,143 @@
+\section*{Motivation}
+
+Chapter~29 solved the MDP problem under two unrealistic assumptions: the state space is finite and small enough to enumerate (so $Q$ is a table), and learning is on-policy from full sweeps of $\mathcal{S}\times\mathcal{A}$. Real problems --- Atari from raw pixels, continuous control, language models --- break both. We need (a) a function approximator $Q_\theta(s,a)$ that generalizes across states and (b) a learning rule that is off-policy, reusing data collected under earlier behavior policies.
+
+The naive combination of (a), (b), and the bootstrapping target of TD-learning is unstable: the \emph{deadly triad} (Sutton \& Barto, Ch 11). DQN (Mnih et al.\ 2015) cleared the triad with two simple tricks --- a replay buffer and a target network --- and won Atari. We then move to the maximum-entropy reformulation, where adding $\alpha H(\pi)$ to the reward turns the hard $\max$ into a log-sum-exp, gives the closed-form Boltzmann policy $\pi^* \propto \exp(Q/\alpha)$, and is the same derivation that produces the RLHF/DPO closed form $\pi^*\propto\pi_{\mathrm{ref}}\exp(r/\beta)$ used in Chapter~28 and central to Chapter~31.
+
+\section*{Definitions}
+
+\begin{definition}[Function approximator]
+$Q_\theta(s,a):\mathcal{S}\times\mathcal{A}\to\mathbb{R}$ parameterized by $\theta\in\mathbb{R}^d$. Linear: $Q_\theta(s,a)=\phi(s,a)^\top\theta$ for a feature map $\phi$. Neural: an MLP (Ch 15) with input $s$ and $|\mathcal{A}|$ outputs, trained by backprop (Ch 18).
+\end{definition}
+
+\begin{definition}[Mean-squared TD error --- the DQN loss]
+For a transition $(s,a,r,s')$ drawn from a replay buffer $\mathcal{D}$,
+\[
+\mathcal{L}(\theta)=\mathbb{E}_{(s,a,r,s')\sim\mathcal{D}}\!\left[\big(r+\gamma\max_{a'}Q_{\theta^-}(s',a')-Q_\theta(s,a)\big)^2\right],
+\]
+where $\theta^-$ is a frozen \emph{target network}.
+\end{definition}
+
+\begin{definition}[Replay buffer and target update]
+$\mathcal{D}$ is a FIFO of past transitions; minibatches are sampled iid for the gradient step. Target network update: \emph{hard} $\theta^-\leftarrow\theta$ every $K$ steps, or \emph{Polyak} $\theta^-\leftarrow\tau\theta+(1-\tau)\theta^-$ with $\tau\ll 1$.
+\end{definition}
+
+\begin{definition}[Maximum-entropy RL objective]
+For temperature $\alpha>0$,
+\[
+J_\alpha(\pi)=\mathbb{E}_\pi\!\left[\sum_{t=0}^{\infty}\gamma^t\big(r_t+\alpha\,H(\pi(\cdot\mid s_t))\big)\right],\qquad H(p)=-\sum_a p(a)\log p(a).
+\]
+\end{definition}
+
+\begin{definition}[Soft value functions]
+\[
+V^\pi_{\mathrm{soft}}(s)=\mathbb{E}_\pi[r+\gamma V^\pi_{\mathrm{soft}}(s')+\alpha H(\pi(\cdot\mid s))],\qquad
+Q^\pi_{\mathrm{soft}}(s,a)=r(s,a)+\gamma\,\mathbb{E}_{s'}[V^\pi_{\mathrm{soft}}(s')].
+\]
+\end{definition}
+
+\begin{definition}[Soft Bellman optimality operator]
+\[
+(\mathcal{T}^*_\alpha Q)(s,a)=r(s,a)+\gamma\,\mathbb{E}_{s'}\!\Big[\alpha\log\!\sum_{a'}\exp\!\big(Q(s',a')/\alpha\big)\Big].
+\]
+\end{definition}
+
+\section*{Theorems}
+
+\begin{theorem}[The deadly triad; Baird 1995]
+Off-policy learning $+$ bootstrapping $+$ linear function approximation can diverge.
+\end{theorem}
+
+\begin{example}[Baird's 7-state counterexample]
+Seven states $\{1,\ldots,7\}$ and 8-dimensional features
+\[
+\phi(s)=2e_s+e_8\ (s=1..6),\qquad \phi(7)=e_7+2e_8.
+\]
+Two actions: \emph{solid} deterministically goes to state 7; \emph{dashed} goes uniformly to one of states $1..6$. All rewards are $0$, $\gamma=0.99$. Target policy always picks \emph{solid}; behavior policy picks solid with probability $1/7$, so the off-policy importance ratio is $\rho=7$ on solid steps and $0$ on dashed steps. Initialize $w=(1,1,1,1,1,1,10,1)^\top$. The semi-gradient TD(0) update
+\[
+w\leftarrow w+\alpha\,\rho\,\big(0+\gamma\phi(7)^\top w-\phi(s)^\top w\big)\,\phi(s)
+\]
+satisfies $\|w_t\|\to\infty$.
+\end{example}
+
+\begin{proof}[Why it diverges]
+Under the behavior state distribution $d_b$, the expected semi-gradient update is $w_{t+1}=w_t+\alpha A w_t$ with
+\[
+A=\mathbb{E}_{s\sim d_b}\!\big[\rho(s)\,\phi(s)\,(\gamma\phi(7)-\phi(s))^\top\big].
+\]
+Stability requires every eigenvalue of $A$ to lie in the open left half-plane. In Baird's setup, only solid transitions contribute (dashed has $\rho=0$); these contribute $\phi(s)(\gamma\phi(7)-\phi(s))^\top$ for each $s$. Note $\gamma\phi(7)-\phi(s)=-2e_s+\gamma e_7+(2\gamma-1)e_8$, so for $\gamma>1/2$ the shared-feature direction $e_8$ accumulates a positive contribution across states, producing a positive eigenvalue of $A$ along $e_8$. Hence $\|w_t\|$ grows geometrically.
+
+\textbf{Role of each leg.} Without function approximation (tabular: $\phi(s)=e_s$), $A$ is diagonal-dominant and negative-definite, and TD(0) converges. Without bootstrapping (Monte Carlo), the loss is convex regression and SGD converges. Without off-policy ($\rho\equiv 1$), Tsitsiklis--Van Roy (1997) show the on-policy projection $\Pi\mathcal{T}^\pi$ is a $\gamma$-contraction in the $d_\pi$-weighted norm, so TD(0) converges to the projected fixed point. Removing any one leg restores stability; keeping all three permits divergence. The notebook reproduces $\|w\|$ growing from $\approx 10$ to $>300$ in 1000 steps.
+\end{proof}
+
+\begin{theorem}[DQN's two tricks rescue stability --- informal]
+Both the replay buffer and the target network are necessary for stable training of a neural-network $Q$-function.
+\end{theorem}
+
+\begin{proof}[Argument]
+\textbf{Replay buffer.} SGD's stochastic-approximation theorem (Ch 13) requires gradient samples to be approximately iid. Sequential MDP transitions are highly correlated. Buffering $\sim 10^5$--$10^6$ past transitions and sampling minibatches uniformly (a) decorrelates the gradient signal, (b) reuses each transition, and (c) makes the data distribution close to stationary so the SGD analysis applies.
+
+\textbf{Target network.} With a single network the bootstrap target $r+\gamma\max_{a'}Q_\theta(s',a')$ shifts every gradient step, coupling $Q_\theta(s,a)$ to itself and producing oscillation. Freezing $\theta^-$ for $K$ steps decouples target from prediction; the loss is then a standard regression with stationary targets, which AdamW (Ch 14) handles. Mnih et al.\ 2015 verified both tricks are necessary in ablations.
+\end{proof}
+
+\begin{theorem}[Max-entropy RL = constrained optimization; closed-form policy]
+For fixed $s$ and $Q(s,\cdot)$, the maximizer of
+\[
+\sum_a \pi(a)Q(s,a)+\alpha H(\pi)\quad \text{s.t.}\quad \sum_a\pi(a)=1,\ \pi(a)\ge 0
+\]
+is
+\[
+\pi^*(a\mid s)=\frac{\exp(Q(s,a)/\alpha)}{\sum_{a'}\exp(Q(s,a')/\alpha)},\qquad \text{value}=\alpha\log\sum_a\exp(Q(s,a)/\alpha).
+\]
+\end{theorem}
+
+\begin{proof}
+Lagrangian
+\[
+\mathcal{L}=\sum_a\pi(a)Q(s,a)-\alpha\sum_a\pi(a)\log\pi(a)-\lambda\Big(\sum_a\pi(a)-1\Big).
+\]
+Stationarity $\partial\mathcal{L}/\partial\pi(a)=Q(s,a)-\alpha(\log\pi(a)+1)-\lambda=0$ gives $\pi(a)=\exp((Q(s,a)-\lambda-\alpha)/\alpha)$. Imposing $\sum_a\pi(a)=1$ pins $\lambda$ and produces the softmax. Substituting back yields $\sum_a\pi^*(a)Q(s,a)+\alpha H(\pi^*)=\alpha\log\sum_a\exp(Q(s,a)/\alpha)$. The objective is strictly concave (entropy is strictly concave; reward is linear), so the KKT point is the unique global maximum; positivity is automatic.
+\end{proof}
+
+\begin{remark}[RLHF correspondence]
+Replace $H(\pi)$ by $-D_{\mathrm{KL}}(\pi\|\pi_{\mathrm{ref}})$: the same Lagrangian gives $\pi^*\propto\pi_{\mathrm{ref}}\exp(r/\beta)$, the starting point of the DPO derivation in Chapter~28.
+\end{remark}
+
+\begin{theorem}[Soft Bellman is a $\gamma$-contraction]
+$\mathcal{T}^*_\alpha$ is a $\gamma$-contraction on $(\mathbb{R}^{|\mathcal{S}|\times|\mathcal{A}|},\|\cdot\|_\infty)$, hence has a unique fixed point $Q^*_{\mathrm{soft}}$ which value iteration $Q_{k+1}=\mathcal{T}^*_\alpha Q_k$ reaches at rate $\gamma^k$.
+\end{theorem}
+
+\begin{proof}
+The log-sum-exp $L_\alpha(x):=\alpha\log\sum_i\exp(x_i/\alpha)$ is 1-Lipschitz in $\|\cdot\|_\infty$. Indeed $\nabla L_\alpha(x)=\mathrm{softmax}(x/\alpha)=:p$ is a probability vector ($p_i\ge 0,\ \sum p_i=1$), so $\|p\|_1=1$. By the mean-value theorem $L_\alpha(x)-L_\alpha(y)=p_\xi^\top(x-y)$ for some $\xi$ on the segment between $x$ and $y$; H\"older gives $|p_\xi^\top(x-y)|\le\|p_\xi\|_1\|x-y\|_\infty=\|x-y\|_\infty$. Now for any $Q_1,Q_2$ and any $(s,a)$,
+\[
+|\mathcal{T}^*_\alpha Q_1(s,a)-\mathcal{T}^*_\alpha Q_2(s,a)|=\gamma\,\big|\mathbb{E}_{s'}[L_\alpha(Q_1(s',\cdot))-L_\alpha(Q_2(s',\cdot))]\big|\le\gamma\,\mathbb{E}_{s'}\|Q_1(s',\cdot)-Q_2(s',\cdot)\|_\infty\le\gamma\|Q_1-Q_2\|_\infty.
+\]
+Taking sup over $(s,a)$ yields $\|\mathcal{T}^*_\alpha Q_1-\mathcal{T}^*_\alpha Q_2\|_\infty\le\gamma\|Q_1-Q_2\|_\infty$. Banach gives existence, uniqueness of $Q^*_{\mathrm{soft}}$, and geometric convergence $\|Q_k-Q^*_{\mathrm{soft}}\|_\infty\le\gamma^k\|Q_0-Q^*_{\mathrm{soft}}\|_\infty$.
+\end{proof}
+
+\begin{theorem}[Soft $\to$ hard as $\alpha\to 0$]
+$\alpha\log\sum_a\exp(Q(s,a)/\alpha)\to\max_a Q(s,a)$ as $\alpha\to 0^+$, and the soft policy $\pi^*_\alpha$ collapses to the greedy policy (uniform over the argmax set).
+\end{theorem}
+
+\begin{proof}
+Let $M=\max_a Q(s,a)$, $\mathcal{A}^*=\{a:Q(s,a)=M\}$, $k=|\mathcal{A}^*|$. Then
+\[
+\alpha\log\sum_a\exp(Q(s,a)/\alpha)=M+\alpha\log\!\Big(k+\sum_{a\notin\mathcal{A}^*}\exp\!\big((Q(s,a)-M)/\alpha\big)\Big).
+\]
+Each suboptimal exponent is strictly negative, so its exponential vanishes as $\alpha\to 0$, leaving $M+\alpha\log k\to M$. The softmax mass concentrates on $\mathcal{A}^*$ at $1/k$ each. This is the Ch 16 softmax-temperature limit applied to $Q/\alpha$.
+\end{proof}
+
+\section*{Code sketch}
+
+The notebook implements (i) linear TD(0) on a 5-state chain, recovering the closed-form $V$; (ii) Baird's counterexample, with $\|w\|$ exploding; (iii) a numpy DQN on a hand-coded CartPole, showing average episode length growing from $\sim 22$ to $>100$ without any deep-learning library; (iv) soft Q-learning on a 4$\times$4 grid for $\alpha\in\{0.01,0.5,5\}$, verifying $Q_{\mathrm{soft}}\to Q^*$ as $\alpha\to 0$; (v) the soft Bellman fixed point on a 3-state MDP, with zero residual, alongside the analogous RLHF closed form.
+
+\section*{Connection to LLMs}
+
+Maximum-entropy RL is the bridge to alignment. Compare the two per-state objectives:
+\begin{itemize}
+\item \textbf{Soft RL (this chapter):} $\max_\pi\sum_a\pi(a)Q(s,a)+\alpha H(\pi)\ \Rightarrow\ \pi^*(a\mid s)\propto\exp(Q(s,a)/\alpha)$.
+\item \textbf{RLHF (Ch 28):} $\max_\pi\mathbb{E}_{y\sim\pi}[r(x,y)]-\beta D_{\mathrm{KL}}(\pi\|\pi_{\mathrm{ref}})\ \Rightarrow\ \pi^*(y\mid x)\propto\pi_{\mathrm{ref}}(y\mid x)\exp(r(x,y)/\beta)$.
+\end{itemize}
+The two derivations are the same Lagrangian: replace the entropy bonus $-\alpha\sum_a\pi(a)\log\pi(a)$ with the KL leash $-\beta\sum_a\pi(a)\log(\pi(a)/\pi_{\mathrm{ref}}(a))$, which adds a constant shift inside the log. Stationarity then yields $\pi(a)\propto\pi_{\mathrm{ref}}(a)\exp(Q(s,a)/\beta)$, the RLHF closed form. DPO (Ch 28) inverts this expression and substitutes into the Bradley--Terry preference likelihood, where the partition function $Z(x)$ cancels.
+
+Architecturally, DQN's target network plays the same role as RLHF's $\pi_{\mathrm{ref}}$: a slowly-moving anchor that prevents the bootstrap (or the KL leash) from chasing its own tail. In DQN the anchor is refreshed every $K$ gradient steps; in RLHF it is held fixed for the entire fine-tuning run. In both cases the anchor turns a non-stationary self-referential objective into a sequence of stationary regression problems that AdamW (Ch 14) can reliably minimize. Chapter~31 closes the loop, fusing policy gradient (REINFORCE/GRPO) with the soft-RL view to derive the alignment loss actually used by modern LLMs.
