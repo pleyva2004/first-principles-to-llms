@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.cache/
+*.pt
+*.bin
+
+# OS
+.DS_Store
+
+# LaTeX byproducts (keep chain.pdf — committed back by CI)
+*.aux
+*.log
+*.bbl
+*.blg
+*.out
+*.toc
+*.fls
+*.fdb_latexmk
+*.synctex.gz
