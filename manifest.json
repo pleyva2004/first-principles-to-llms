@@ -32,6 +32,9 @@
     { "id": 28, "title": "SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT", "block": "G — Post-training", "deps": [27] },
     { "id": 29, "title": "MDP foundations: Bellman equations, value iteration, tabular Q-learning", "block": "H — Reinforcement Learning", "deps": [7, 8, 13] },
     { "id": 30, "title": "Value-based deep RL: function approximation, DQN, max-entropy framework", "block": "H — Reinforcement Learning", "deps": [14, 16, 18, 29] },
-    { "id": 31, "title": "Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop", "block": "H — Reinforcement Learning", "deps": [11, 17, 25, 27, 28, 29, 30] }
+    { "id": 31, "title": "Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop", "block": "H — Reinforcement Learning", "deps": [11, 17, 25, 27, 28, 29, 30] },
+    { "id": 32, "title": "KV cache mechanics: memory analysis and tokens-per-second benchmarks", "block": "I — Inference and Serving", "deps": [21, 22, 23, 27] },
+    { "id": 33, "title": "Speculative decoding: draft + target model with rejection sampling correctness proof", "block": "I — Inference and Serving", "deps": [25, 32] },
+    { "id": 34, "title": "Quantization: int8 and int4 post-training quantization with measured perplexity / throughput tradeoffs", "block": "I — Inference and Serving", "deps": [6, 17, 27] }
   ]
 }

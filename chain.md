@@ -56,6 +56,11 @@ An unbroken chain of derivation from set theory to modern large language models.
 - [Chapter 30: Value-based deep RL: function approximation, DQN, max-entropy framework](#chapter-30-value-based-deep-rl-function-approximation-dqn-max-entropy-framework)
 - [Chapter 31: Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop](#chapter-31-policy-gradient-grpo-and-the-rlhfdpo-bridge-tiny-gpt-alignment-loop)
 
+### I — Inference and Serving
+- [Chapter 32: KV cache mechanics: memory analysis and tokens-per-second benchmarks](#chapter-32-kv-cache-mechanics-memory-analysis-and-tokens-per-second-benchmarks)
+- [Chapter 33: Speculative decoding: draft + target model with rejection sampling correctness proof](#chapter-33-speculative-decoding-draft-target-model-with-rejection-sampling-correctness-proof)
+- [Chapter 34: Quantization: int8 and int4 post-training quantization with measured perplexity / throughput tradeoffs](#chapter-34-quantization-int8-and-int4-post-training-quantization-with-measured-perplexity-throughput-tradeoffs)
+
 <!-- TOC END -->
 
 
@@ -2483,3 +2488,23 @@ Modern post-training is a small constellation of three techniques sitting on the
 A unifying mental model: all three are doing surrogate optimization of $J(\theta) - \beta D_{\mathrm{KL}}(\pi_\theta \| \pi_{\mathrm{ref}})$. RLHF estimates the gradient with PPO + a learned value function; DPO eliminates online sampling by inverting the closed-form solution; GRPO eliminates the value function by group-baselining. The pre-trained model from Chapter 27 is the floor — it sets *what is sayable* — and these chapters reshape only a small region around it. Pre-training is calorie intake; alignment is digestion. Everything in this 31-chapter chain composes to produce that final sentence.
 
 <!-- CHAPTER 31 END -->
+
+# Block I — Inference and Serving
+
+<!-- CHAPTER 32 START -->
+## Chapter 32: KV cache mechanics: memory analysis and tokens-per-second benchmarks
+
+_Stub — will be filled by Phase B chapter agent._
+<!-- CHAPTER 32 END -->
+
+<!-- CHAPTER 33 START -->
+## Chapter 33: Speculative decoding: draft + target model with rejection sampling correctness proof
+
+_Stub — will be filled by Phase B chapter agent._
+<!-- CHAPTER 33 END -->
+
+<!-- CHAPTER 34 START -->
+## Chapter 34: Quantization: int8 and int4 post-training quantization with measured perplexity / throughput tradeoffs
+
+_Stub — will be filled by Phase B chapter agent._
+<!-- CHAPTER 34 END -->
