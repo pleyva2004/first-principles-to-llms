@@ -1,0 +1,114 @@
+\subsection*{Motivation}
+
+Chapter 5 built vector spaces and linear maps as raw algebraic objects. To do \emph{geometry} --- length, angle, orthogonality, best approximation --- we add a single piece of structure: an \emph{inner product}. From it we will derive the Cauchy--Schwarz inequality, the triangle inequality, the spectral theorem for symmetric matrices, the singular value decomposition (SVD), and the Eckart--Young low-rank approximation theorem. These are the load-bearing tools behind PCA, attention, and LoRA fine-tuning of LLMs.
+
+\subsection*{Definitions}
+
+\begin{definition}[Inner product]
+A function $\langle\cdot,\cdot\rangle:V\times V\to\mathbb{R}$ on a real vector space $V$ is an \emph{inner product} if for all $\mathbf{x},\mathbf{y},\mathbf{z}\in V$ and $a,b\in\mathbb{R}$:
+\begin{enumerate}
+  \item Symmetry: $\langle\mathbf{x},\mathbf{y}\rangle=\langle\mathbf{y},\mathbf{x}\rangle$.
+  \item Linearity in the first argument: $\langle a\mathbf{x}+b\mathbf{y},\mathbf{z}\rangle=a\langle\mathbf{x},\mathbf{z}\rangle+b\langle\mathbf{y},\mathbf{z}\rangle$.
+  \item Positive-definiteness: $\langle\mathbf{x},\mathbf{x}\rangle\ge 0$ with equality iff $\mathbf{x}=\mathbf{0}$.
+\end{enumerate}
+The canonical example on $\mathbb{R}^n$ is the dot product $\langle\mathbf{x},\mathbf{y}\rangle=\sum_i x_i y_i=\mathbf{x}^\top\mathbf{y}$.
+\end{definition}
+
+\begin{definition}[Induced norm]
+$\|\mathbf{x}\|:=\sqrt{\langle\mathbf{x},\mathbf{x}\rangle}$.
+\end{definition}
+
+\begin{definition}[Orthogonality]
+$\mathbf{x},\mathbf{y}$ are \emph{orthogonal} if $\langle\mathbf{x},\mathbf{y}\rangle=0$. A set $\{\mathbf{q}_i\}$ is \emph{orthonormal} if $\langle\mathbf{q}_i,\mathbf{q}_j\rangle=\delta_{ij}$. An \emph{orthonormal basis} is an orthonormal spanning set.
+\end{definition}
+
+\begin{definition}[Eigenvalue, eigenvector, characteristic polynomial]
+For $A\in\mathbb{R}^{n\times n}$, $(\lambda,\mathbf{v})$ with $\mathbf{v}\ne\mathbf{0}$ is an \emph{eigenpair} if $A\mathbf{v}=\lambda\mathbf{v}$. The \emph{characteristic polynomial} is $p_A(\lambda):=\det(A-\lambda I)$; its roots are the eigenvalues.
+\end{definition}
+
+\begin{definition}[Symmetric, positive (semi)definite]
+$A$ is \emph{symmetric} if $A^\top=A$; \emph{positive semidefinite} (PSD) if symmetric with $\mathbf{x}^\top A\mathbf{x}\ge 0$ for all $\mathbf{x}$; \emph{positive definite} if strict for $\mathbf{x}\ne\mathbf{0}$.
+\end{definition}
+
+\begin{definition}[Singular value decomposition]
+A \emph{singular value decomposition} of $A\in\mathbb{R}^{m\times n}$ is a factorization $A=U\Sigma V^\top$ where $U\in\mathbb{R}^{m\times m}$, $V\in\mathbb{R}^{n\times n}$ are orthogonal ($U^\top U=I$, $V^\top V=I$) and $\Sigma\in\mathbb{R}^{m\times n}$ is ``diagonal'' with nonnegative entries $\sigma_1\ge\sigma_2\ge\cdots\ge 0$.
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Cauchy--Schwarz]
+For all $\mathbf{x},\mathbf{y}\in V$, $|\langle\mathbf{x},\mathbf{y}\rangle|\le\|\mathbf{x}\|\,\|\mathbf{y}\|$.
+\end{theorem}
+\begin{proof}
+If $\mathbf{y}=\mathbf{0}$, both sides vanish. Otherwise, for every $t\in\mathbb{R}$,
+\[
+0\le\|\mathbf{x}-t\mathbf{y}\|^2=\langle\mathbf{x}-t\mathbf{y},\mathbf{x}-t\mathbf{y}\rangle=\|\mathbf{x}\|^2-2t\langle\mathbf{x},\mathbf{y}\rangle+t^2\|\mathbf{y}\|^2.
+\]
+This is a quadratic in $t$ that is nonnegative everywhere, so its discriminant satisfies
+\[
+(2\langle\mathbf{x},\mathbf{y}\rangle)^2-4\|\mathbf{x}\|^2\|\mathbf{y}\|^2\le 0,
+\]
+i.e.\ $\langle\mathbf{x},\mathbf{y}\rangle^2\le\|\mathbf{x}\|^2\|\mathbf{y}\|^2$. Taking square roots completes the proof.
+\end{proof}
+
+\begin{corollary}[Triangle inequality]
+$\|\mathbf{x}+\mathbf{y}\|\le\|\mathbf{x}\|+\|\mathbf{y}\|$.
+\end{corollary}
+\begin{proof}
+Expand and apply Cauchy--Schwarz:
+\[
+\|\mathbf{x}+\mathbf{y}\|^2=\|\mathbf{x}\|^2+2\langle\mathbf{x},\mathbf{y}\rangle+\|\mathbf{y}\|^2\le\|\mathbf{x}\|^2+2\|\mathbf{x}\|\|\mathbf{y}\|+\|\mathbf{y}\|^2=(\|\mathbf{x}\|+\|\mathbf{y}\|)^2.\qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Spectral theorem, real symmetric case]
+Every symmetric $A\in\mathbb{R}^{n\times n}$ admits a factorization $A=Q\Lambda Q^\top$ with $Q$ orthogonal and $\Lambda$ real diagonal.
+\end{theorem}
+\begin{proof}
+Induct on $n$. For $n=1$, trivial. Assume the result for $n-1$. The Rayleigh quotient $R(\mathbf{x})=\mathbf{x}^\top A\mathbf{x}$ is continuous on the unit sphere $S^{n-1}=\{\mathbf{x}:\|\mathbf{x}\|=1\}$, which is compact, so $R$ attains a maximum at some $\mathbf{v}_1\in S^{n-1}$ with value $\lambda_1$. By Lagrange multipliers (or by directly differentiating $R(\mathbf{v}_1+t\mathbf{w})$ along any tangent $\mathbf{w}\perp\mathbf{v}_1$ at $t=0$), $A\mathbf{v}_1=\lambda_1\mathbf{v}_1$. The eigenvalue is real because $\lambda_1=\mathbf{v}_1^\top A\mathbf{v}_1\in\mathbb{R}$ and $\mathbf{v}_1\in\mathbb{R}^n$. (Alternatively, if $A\mathbf{z}=\mu\mathbf{z}$ over $\mathbb{C}$ with $\mathbf{z}\ne\mathbf{0}$, then $\mu\,\overline{\mathbf{z}}^\top\mathbf{z}=\overline{\mathbf{z}}^\top A\mathbf{z}=(A\overline{\mathbf{z}})^\top\mathbf{z}=\overline{\mu}\,\overline{\mathbf{z}}^\top\mathbf{z}$ since $A$ is real symmetric, so $\mu=\overline{\mu}$.)
+
+Let $W=\{\mathbf{v}_1\}^{\perp}$, an $(n-1)$-dimensional subspace. For $\mathbf{w}\in W$,
+\[
+\langle A\mathbf{w},\mathbf{v}_1\rangle=\langle\mathbf{w},A\mathbf{v}_1\rangle=\lambda_1\langle\mathbf{w},\mathbf{v}_1\rangle=0,
+\]
+so $A$ maps $W\to W$. The restriction $A|_W$ is symmetric with respect to the inherited inner product. By induction there is an orthonormal eigenbasis $\mathbf{v}_2,\dots,\mathbf{v}_n$ of $W$ with eigenvalues $\lambda_2,\dots,\lambda_n$. Then $\mathbf{v}_1,\dots,\mathbf{v}_n$ is an orthonormal eigenbasis of $A$. Setting $Q=[\mathbf{v}_1\;\cdots\;\mathbf{v}_n]$ and $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_n)$ gives $A=Q\Lambda Q^\top$.
+\end{proof}
+
+\begin{theorem}[Existence of SVD]
+Every $A\in\mathbb{R}^{m\times n}$ admits an SVD $A=U\Sigma V^\top$.
+\end{theorem}
+\begin{proof}[Sketch]
+The matrix $A^\top A\in\mathbb{R}^{n\times n}$ is symmetric and PSD, since $\mathbf{x}^\top A^\top A\mathbf{x}=\|A\mathbf{x}\|^2\ge 0$. By the spectral theorem $A^\top A=V\Lambda V^\top$ with $V$ orthogonal and $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_n)$, $\lambda_i\ge 0$, sorted decreasingly. Set $\sigma_i:=\sqrt{\lambda_i}$. For each $i$ with $\sigma_i>0$ define $\mathbf{u}_i:=A\mathbf{v}_i/\sigma_i\in\mathbb{R}^m$; then
+\[
+\langle\mathbf{u}_i,\mathbf{u}_j\rangle=\frac{\mathbf{v}_i^\top A^\top A\mathbf{v}_j}{\sigma_i\sigma_j}=\frac{\lambda_j\delta_{ij}}{\sigma_i\sigma_j}=\delta_{ij},
+\]
+so the $\mathbf{u}_i$ are orthonormal in $\mathbb{R}^m$. Extend to an orthonormal basis to form $U$. By construction $A V=U\Sigma$, hence $A=U\Sigma V^\top$.
+\end{proof}
+
+\begin{theorem}[Eckart--Young]
+Let $A=U\Sigma V^\top$ have singular values $\sigma_1\ge\cdots\ge\sigma_r>0$. The truncated SVD $A_k:=\sum_{i=1}^{k}\sigma_i\mathbf{u}_i\mathbf{v}_i^\top$ minimises $\|A-B\|_F$ (and $\|A-B\|_2$) over rank-$k$ matrices $B$, with $\|A-A_k\|_F^2=\sum_{i>k}\sigma_i^2$.
+\end{theorem}
+\begin{proof}[Sketch]
+The Frobenius norm is unitarily invariant: $\|A-B\|_F=\|U^\top(A-B)V\|_F$. The problem reduces to: among rank-$k$ matrices $C\in\mathbb{R}^{m\times n}$, minimise
+\[
+\|\Sigma-C\|_F^2=\sum_i(\sigma_i-c_{ii})^2+\sum_{i\ne j}c_{ij}^2.
+\]
+Off-diagonal entries should be zero, and the diagonal of $C$ should equal $\sigma_i$ for $i\le k$ and $0$ for $i>k$ (matching the largest gaps), recovering $A_k$. The operator-norm version uses the Courant--Fischer minimax characterisation of singular values.
+\end{proof}
+
+\subsection*{Code Sketch}
+
+The accompanying notebook (\texttt{cells.json}) (i) verifies Cauchy--Schwarz on 50 random pairs in $\mathbb{R}^{10}$, (ii) computes a symmetric eigendecomposition via \texttt{numpy.linalg.eigh} and checks $A\mathbf{v}_i=\lambda_i\mathbf{v}_i$ plus orthonormality, (iii) computes an SVD via \texttt{numpy.linalg.svd} and reconstructs $A$, and (iv) shows that Frobenius errors of rank-1 and rank-2 approximations decrease monotonically, consistent with Eckart--Young.
+
+\subsection*{Connection to LLMs}
+
+Inner products and SVD are the geometric backbone of transformers.
+
+\begin{itemize}
+  \item \textbf{Attention} (Chapters~21--22). The score matrix $QK^\top$ is the matrix of pairwise inner products of query and key embeddings. Linear-attention and Performer-style methods exploit the empirical low-rank-ness of $QK^\top$, which by Eckart--Young is best captured by truncated SVD.
+  \item \textbf{PCA / interpretability.} SVD of an embedding matrix yields principal components; leading singular vectors expose semantic axes used in probing studies.
+  \item \textbf{LoRA fine-tuning.} The update $W_0+BA$ with $B\in\mathbb{R}^{m\times r}$, $A\in\mathbb{R}^{r\times n}$, $r\ll\min(m,n)$, is literally a rank-$r$ correction; Eckart--Young guarantees its optimality at that rank in Frobenius norm.
+  \item \textbf{Spectral norm regularisation.} Bounding $\sigma_1(W)$ controls Lipschitz constants and stabilises training.
+\end{itemize}
+
+Every later geometric statement in this book --- projections, least squares, gradient flow on weight matrices, contractive maps --- descends from the inequalities and decompositions proven in this chapter.

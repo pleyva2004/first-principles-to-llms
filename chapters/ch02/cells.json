@@ -1,0 +1,147 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 2 — Numbers, sequences, limits, completeness\n",
+      "\n",
+      "We build $\\mathbb{N} \\subset \\mathbb{Z} \\subset \\mathbb{Q} \\subset \\mathbb{R}$ and isolate the **completeness axiom** of $\\mathbb{R}$: every nonempty subset that is bounded above has a supremum in $\\mathbb{R}$. This single axiom is what powers every convergence theorem we will need later for SGD and Adam.\n"
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Convergence: $\\varepsilon$–$N$ on $S_n = \\sum_{k=1}^n 1/k^2 \\to \\pi^2/6$\n",
+      "\n",
+      "We compute partial sums, the gap $|S_n - \\pi^2/6|$, and for each $\\varepsilon$ the smallest $N$ such that $n \\geq N \\Rightarrow |S_n - \\pi^2/6| < \\varepsilon$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "target = np.pi**2 / 6\n",
+      "n_max = 2_000_000\n",
+      "ks = np.arange(1, n_max + 1, dtype=np.float64)\n",
+      "partial = np.cumsum(1.0 / ks**2)\n",
+      "\n",
+      "for n in [1, 5, 10, 100, 1_000, 10_000, 100_000]:\n",
+      "    print(f'S_{n:>7d} = {partial[n-1]:.10f}   gap = {abs(partial[n-1] - target):.2e}')\n",
+      "\n",
+      "gap = np.abs(partial - target)\n",
+      "for eps in [1e-2, 1e-4, 1e-6]:\n",
+      "    idx = np.argmax(gap < eps)\n",
+      "    # Verify monotone: from idx onward, gap stays < eps (true here since gap ~ 1/n).\n",
+      "    assert gap[idx] < eps\n",
+      "    print(f'eps = {eps:.0e}   smallest N = {idx + 1}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Cauchy criterion\n",
+      "\n",
+      "A real sequence is Cauchy iff for every $\\varepsilon > 0$ there exists $N$ with $|a_m - a_n| < \\varepsilon$ for all $m, n \\geq N$. We test $a_n = 1/n$ (Cauchy) against $b_n = (-1)^n$ (not Cauchy).\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "def is_cauchy(seq, eps):\n",
+      "    \"\"\"Return smallest N such that sup_{m,n>=N} |seq[m]-seq[n]| < eps, or None.\"\"\"\n",
+      "    seq = np.asarray(seq, dtype=np.float64)\n",
+      "    L = len(seq)\n",
+      "    for N in range(L):\n",
+      "        tail = seq[N:]\n",
+      "        if tail.max() - tail.min() < eps:\n",
+      "            return N\n",
+      "    return None\n",
+      "\n",
+      "a = 1.0 / np.arange(1, 5001)\n",
+      "b = (-1.0) ** np.arange(5000)\n",
+      "\n",
+      "for eps in [1e-1, 1e-2, 1e-3]:\n",
+      "    Na = is_cauchy(a, eps)\n",
+      "    Nb = is_cauchy(b, eps)\n",
+      "    print(f'eps = {eps:.0e}   a_n=1/n: N = {Na}    b_n=(-1)^n: N = {Nb}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## $\\sqrt{2} \\notin \\mathbb{Q}$ and Newton's method\n",
+      "\n",
+      "**Proof recap.** If $\\sqrt{2} = p/r$ in lowest terms, then $p^2 = 2r^2$ forces $p$ even, then $r$ even, contradicting $\\gcd(p,r)=1$.\n",
+      "\n",
+      "So $\\sqrt{2}$ lives in $\\mathbb{R} \\setminus \\mathbb{Q}$ — and the Newton iteration $x_{n+1} = (x_n + 2/x_n)/2$ produces a Cauchy sequence of rationals whose limit is $\\sqrt{2}$, witnessing why we needed completeness in the first place.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "x = 1.0\n",
+      "true = np.sqrt(2.0)\n",
+      "print(f'{ \"n\":>3}  {\"x_n\":>20}  {\"|x_n - sqrt(2)|\":>18}')\n",
+      "for n in range(11):\n",
+      "    print(f'{n:>3}  {x:>20.16f}  {abs(x - true):>18.2e}')\n",
+      "    x = 0.5 * (x + 2.0 / x)\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Bounded monotone convergence: telescoping series\n",
+      "\n",
+      "$a_n = \\sum_{k=1}^n \\tfrac{1}{k(k+1)} = 1 - \\tfrac{1}{n+1}$ is monotone increasing and bounded above by $1$. By Theorem 2.8 it must converge — and indeed to $\\sup_n a_n = 1$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "n_max = 100_000\n",
+      "ks = np.arange(1, n_max + 1, dtype=np.float64)\n",
+      "terms = 1.0 / (ks * (ks + 1.0))\n",
+      "a = np.cumsum(terms)\n",
+      "\n",
+      "monotone = bool(np.all(np.diff(a) >= 0))\n",
+      "bounded = bool(np.all(a <= 1.0))\n",
+      "print(f'monotone increasing: {monotone}')\n",
+      "print(f'bounded above by 1 : {bounded}')\n",
+      "for n in [1, 10, 100, 1_000, 10_000, 100_000]:\n",
+      "    print(f'a_{n:>6d} = {a[n-1]:.10f}   gap to 1 = {1 - a[n-1]:.2e}')\n",
+      "print(f'sup_n a_n (numerical) = {a.max():.12f}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Forward link\n",
+      "\n",
+      "When we prove SGD converges in Chapter 13, the core lemma is: the loss sequence $(L(\\theta_t))$ is monotone decreasing in expectation and bounded below by $0$, hence convergent — by **exactly** Theorem 2.8 of this chapter.\n"
+    ]
+  }
+]

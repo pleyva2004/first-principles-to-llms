@@ -1,0 +1,91 @@
+\subsection*{Motivation}
+
+Every transformer layer is, between its bias terms and nonlinearities, a \emph{linear map between finite-dimensional real vector spaces}. The ``hidden dimension'' $d$ is just $\dim \mathbb{R}^d$; a ``weight matrix'' $W \in \mathbb{R}^{m \times n}$ is the matrix representation of a linear map $\mathbb{R}^n \to \mathbb{R}^m$; ``residual connections'' are addition in a vector space; ``low-rank adapters'' are statements about the image of a linear map. Before attention (Chapter~21) or embeddings (Chapter~19), we need the grammar of vector spaces, bases, dimension, kernels, images, and the rank--nullity theorem. We use Chapter~1 (sets, functions, logic) throughout.
+
+\subsection*{Definitions}
+
+\begin{definition}[Field]
+A \emph{field} $\mathbb{F}$ is a set with operations $+,\,\cdot$ such that $(\mathbb{F},+)$ is an abelian group with identity $0$, $(\mathbb{F}\setminus\{0\},\cdot)$ is an abelian group with identity $1$, and multiplication distributes over addition. The canonical example is $\mathbb{F} = \mathbb{R}$.
+\end{definition}
+
+\begin{definition}[Vector space, eight axioms]
+A \emph{vector space} $V$ over $\mathbb{F}$ is a set with addition $+\colon V\times V\to V$ and scalar multiplication $\cdot\colon \mathbb{F}\times V\to V$ satisfying, for all $u,v,w\in V$ and $a,b\in\mathbb{F}$:
+\begin{enumerate}
+  \item $(u+v)+w = u+(v+w)$;
+  \item $u+v = v+u$;
+  \item $\exists\, 0 \in V$ with $v+0=v$ for all $v$;
+  \item $\forall v\,\exists (-v)$ with $v+(-v)=0$;
+  \item $a\cdot(u+v) = a\cdot u + a\cdot v$;
+  \item $(a+b)\cdot v = a\cdot v + b\cdot v$;
+  \item $(ab)\cdot v = a\cdot(b\cdot v)$;
+  \item $1\cdot v = v$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Subspace, span, independence, basis, dimension]
+A \emph{subspace} $U\subset V$ is a subset closed under $+$ and scalar multiplication that contains $0$. A \emph{linear combination} of $v_1,\dots,v_k$ is $\sum a_i v_i$ with $a_i\in\mathbb{F}$. The \emph{span} of $S\subset V$ is $\mathrm{span}(S) := \{\sum a_iv_i : v_i\in S, a_i\in\mathbb{F}\}$, the smallest subspace containing $S$. A finite set $\{v_1,\dots,v_k\}$ is \emph{linearly independent} iff $\sum a_i v_i = 0 \Rightarrow a_1=\cdots=a_k=0$. A \emph{basis} of $V$ is a linearly independent spanning set; the \emph{dimension} $\dim V$ is its cardinality (well-defined by Theorem~\ref{thm:dim} below).
+\end{definition}
+
+\begin{definition}[Linear map, kernel, image, matrix representation]
+A map $T\colon V\to W$ between vector spaces over the same $\mathbb{F}$ is \emph{linear} iff $T(au+bv) = aT(u)+bT(v)$. Define $\ker T := \{v\in V: Tv = 0\}$ and $\mathrm{im}\,T := \{Tv : v\in V\}$; both are subspaces. Given bases $(e_j)$ of $\mathbb{R}^n$ and $(f_i)$ of $\mathbb{R}^m$, the \emph{matrix representation} of $T$ is $A\in\mathbb{R}^{m\times n}$ with $T(e_j) = \sum_i A_{ij} f_i$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{lemma}[Steinitz exchange]\label{lem:steinitz}
+Let $V$ be a vector space over $\mathbb{F}$. If $\{v_1,\dots,v_m\}$ is linearly independent and $\{w_1,\dots,w_n\}$ spans $V$, then $m\le n$, and (after reindexing the $w_j$) we may replace $m$ of them by $v_1,\dots,v_m$ so that the resulting set still spans $V$.
+\end{lemma}
+
+\begin{proof}
+By induction on $m$. The case $m=0$ is trivial. Assume the claim for $m-1$: after reindexing, $\{v_1,\dots,v_{m-1},w_m,\dots,w_n\}$ spans $V$. In particular $m-1\le n$. Then
+\[
+v_m = \sum_{i<m} a_i v_i + \sum_{j\ge m} b_j w_j
+\]
+for some scalars. If all $b_j = 0$, then $v_m\in\mathrm{span}(v_1,\dots,v_{m-1})$, contradicting linear independence of $\{v_1,\dots,v_m\}$. Hence some $b_{j_0}\ne 0$ for $j_0\in\{m,\dots,n\}$, forcing $n\ge m$. Reindex so $j_0=m$ and solve:
+\[
+w_m = b_m^{-1}\!\Big(v_m - \sum_{i<m} a_i v_i - \sum_{j>m} b_j w_j\Big) \in \mathrm{span}(v_1,\dots,v_m,w_{m+1},\dots,w_n).
+\]
+Therefore $\mathrm{span}(v_1,\dots,v_m,w_{m+1},\dots,w_n)$ contains $\{v_1,\dots,v_{m-1},w_m,\dots,w_n\}$, which spans $V$, so the new set spans $V$.
+\end{proof}
+
+\begin{theorem}[Spanning sets contain bases; independent sets extend to bases]\label{thm:basis-ext}
+In a finite-dimensional $V$: (a) any finite spanning set contains a basis; (b) any linearly independent set extends to a basis.
+\end{theorem}
+
+\begin{proof}
+(a) If a spanning set $S$ is dependent, some $w\in S$ lies in $\mathrm{span}(S\setminus\{w\})$, so $S\setminus\{w\}$ still spans. Iterate; finiteness terminates the process at an independent spanning set.\\
+(b) Given an independent set $L$ and a finite spanning set $S$, apply Lemma~\ref{lem:steinitz} to replace $|L|$ of the $w$'s by $L$, producing a spanning set containing $L$. Then apply (a), removing only $S$-side elements.
+\end{proof}
+
+\begin{theorem}[Invariance of dimension]\label{thm:dim}
+Any two bases of a finite-dimensional $V$ have the same cardinality.
+\end{theorem}
+
+\begin{proof}
+Let $\mathcal{B}_1,\mathcal{B}_2$ be bases with $|\mathcal{B}_1|=m$, $|\mathcal{B}_2|=n$. Since $\mathcal{B}_1$ is independent and $\mathcal{B}_2$ spans, Lemma~\ref{lem:steinitz} gives $m\le n$. Swap roles: $n\le m$. Hence $m=n$.
+\end{proof}
+
+\begin{theorem}[Rank--nullity]\label{thm:ranknul}
+Let $T\colon V\to W$ be linear with $\dim V = n < \infty$. Then
+\[
+\dim \ker T + \dim \mathrm{im}\,T \;=\; n.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $(u_1,\dots,u_k)$ be a basis of $\ker T$. By Theorem~\ref{thm:basis-ext}(b), extend to a basis $(u_1,\dots,u_k,v_1,\dots,v_{n-k})$ of $V$. We claim $(Tv_1,\dots,Tv_{n-k})$ is a basis of $\mathrm{im}\,T$.
+
+\emph{Spanning.} Any $w\in\mathrm{im}\,T$ has $w = T(\sum a_i u_i + \sum b_j v_j) = \sum b_j Tv_j$ since $Tu_i = 0$.
+
+\emph{Independence.} If $\sum c_j Tv_j = 0$, then $T(\sum c_j v_j) = 0$, so $\sum c_j v_j \in \ker T = \mathrm{span}(u_i)$. Write $\sum c_j v_j = \sum d_i u_i$, i.e.\ $\sum c_j v_j - \sum d_i u_i = 0$. Independence of the full basis forces all $c_j = 0$.
+
+Hence $\dim \mathrm{im}\,T = n-k = n - \dim \ker T$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+We will (a) implement \texttt{is\_linearly\_independent} and \texttt{dim\_span} via \texttt{numpy.linalg.matrix\_rank}; (b) build a $4\times 6$ random integer matrix, compute rank and a basis of $\ker A$ via the right singular vectors of $A$ corresponding to zero singular values, verifying $Av = 0$; (c) verify the change-of-basis formula $Av = P(P^{-1}AP)(P^{-1}v)$ for a random invertible $P$; (d) confirm $\mathrm{rank}(A) + \dim\ker A = 6$.
+
+\subsection*{Connection to LLMs}
+
+A transformer with hidden dimension $d$ operates on the vector space $\mathbb{R}^d$. The query/key/value projections in attention and the up/down projections in the MLP are linear maps $\mathbb{R}^d\to\mathbb{R}^{d_k}$ or $\mathbb{R}^d\to\mathbb{R}^{d_{\mathrm{ff}}}$ (Chapter~21). The token embedding (Chapter~19) is a linear map $\mathbb{R}^{|\mathcal{V}|}\to\mathbb{R}^d$ applied to a one-hot input, i.e.\ a row lookup. The ``rank'' of an attention matrix and the ``intrinsic dimension'' of activations are claims about $\dim\mathrm{im}$. LoRA fine-tuning constrains weight updates to a low-dimensional subspace --- a direct use of $\dim\mathrm{im}\,T \le \min(m,n)$. Rank--nullity returns when we count free parameters and degrees of freedom.

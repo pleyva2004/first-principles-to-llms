@@ -1,0 +1,184 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 1 — Sets, functions, logic, proofs\n",
+      "\n",
+      "We need a precise grammar for membership, functions, and proof before we can define real numbers (Ch. 5), linear maps (Ch. 8), probability (Ch. 15), or token embeddings (Ch. 19).\n",
+      "\n",
+      "**Key definitions.** A *set* $S$ is a collection of distinct elements; $x \\in S$ means $x$ is an element of $S$. The *power set* is $\\mathcal{P}(S) = \\{T : T \\subset S\\}$. A *function* $f : A \\to B$ assigns each $a \\in A$ exactly one $f(a) \\in B$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "from itertools import chain, combinations\n",
+      "\n",
+      "def power_set(S):\n",
+      "    S = list(S)\n",
+      "    return [set(c) for r in range(len(S) + 1) for c in combinations(S, r)]\n",
+      "\n",
+      "S = {'a', 'b', 'c'}\n",
+      "P = power_set(S)\n",
+      "for T in P:\n",
+      "    print(sorted(T))\n",
+      "print('|P(S)| =', len(P), '   2**|S| =', 2 ** len(S))\n",
+      "assert len(P) == 2 ** len(S), 'power-set cardinality identity failed'\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## De Morgan's laws\n",
+      "\n",
+      "For $A, B \\subset U$:\n",
+      "$$(A \\cup B)^c = A^c \\cap B^c, \\qquad (A \\cap B)^c = A^c \\cup B^c.$$\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "U = set(range(1, 9))\n",
+      "A = {1, 3, 5, 7}\n",
+      "B = {2, 3, 5, 7}\n",
+      "\n",
+      "comp = lambda X: U - X\n",
+      "\n",
+      "lhs1, rhs1 = comp(A | B), comp(A) & comp(B)\n",
+      "lhs2, rhs2 = comp(A & B), comp(A) | comp(B)\n",
+      "\n",
+      "print('(A u B)^c =', sorted(lhs1), '  A^c n B^c =', sorted(rhs1))\n",
+      "print('(A n B)^c =', sorted(lhs2), '  A^c u B^c =', sorted(rhs2))\n",
+      "assert lhs1 == rhs1 and lhs2 == rhs2, 'De Morgan failed'\n",
+      "print('Both De Morgan identities verified.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Injection, surjection, bijection\n",
+      "\n",
+      "$f : A \\to B$ is *injective* iff $f(a_1) = f(a_2) \\Rightarrow a_1 = a_2$, *surjective* iff every $b \\in B$ has a preimage, *bijective* iff both.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def is_injective(f, A):\n",
+      "    seen = {}\n",
+      "    for a in A:\n",
+      "        b = f[a]\n",
+      "        if b in seen:\n",
+      "            return False\n",
+      "        seen[b] = a\n",
+      "    return True\n",
+      "\n",
+      "def is_surjective(f, A, B):\n",
+      "    return set(f[a] for a in A) == set(B)\n",
+      "\n",
+      "def is_bijective(f, A, B):\n",
+      "    return is_injective(f, A) and is_surjective(f, A, B)\n",
+      "\n",
+      "A = [0, 1, 2, 3]\n",
+      "B = [0, 1, 2, 3, 4]\n",
+      "f = {0: 1, 1: 3, 2: 0, 3: 4}   # injective into B, not surjective\n",
+      "print('f =', f)\n",
+      "print('injective?', is_injective(f, A))\n",
+      "print('surjective onto B?', is_surjective(f, A, B))\n",
+      "print('bijective A -> B?', is_bijective(f, A, B))\n",
+      "\n",
+      "# A bijection A -> A\n",
+      "g = {0: 2, 1: 0, 2: 3, 3: 1}\n",
+      "print('\\ng =', g)\n",
+      "print('bijective A -> A?', is_bijective(g, A, A))\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Induction\n",
+      "\n",
+      "Claim: $\\sum_{k=1}^{n} k = n(n+1)/2$.\n",
+      "\n",
+      "*Base:* $n = 1$: LHS $= 1 =$ RHS. *Step:* assume $S(n) = n(n+1)/2$; then\n",
+      "$S(n+1) = S(n) + (n+1) = n(n+1)/2 + (n+1) = (n+1)(n+2)/2$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "def S_direct(n):\n",
+      "    return sum(range(1, n + 1))\n",
+      "\n",
+      "def S_closed(n):\n",
+      "    return n * (n + 1) // 2\n",
+      "\n",
+      "# Direct check up to n = 20\n",
+      "for n in range(1, 21):\n",
+      "    assert S_direct(n) == S_closed(n), f'mismatch at n={n}'\n",
+      "print('Direct verification 1..20: OK')\n",
+      "\n",
+      "# Numerical induction-step check: S_closed(n+1) - S_closed(n) == n+1\n",
+      "ns = np.arange(1, 1001)\n",
+      "lhs = np.array([S_closed(n + 1) - S_closed(n) for n in ns])\n",
+      "rhs = ns + 1\n",
+      "assert np.array_equal(lhs, rhs), 'induction step failed'\n",
+      "print('Base case S(1) =', S_closed(1))\n",
+      "print('Induction step S(n+1) - S(n) = n+1 verified for n = 1..1000')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Connection to LLMs\n",
+      "\n",
+      "A vocabulary $\\mathcal{V}$ is a finite set of tokens. The embedding map $E : \\mathcal{V} \\to \\mathbb{R}^d$ is a function; its lookup-table implementation requires the index $\\mathcal{V} \\to \\{0, \\ldots, |\\mathcal{V}|-1\\}$ to be a **bijection**. We revisit this in Chapter 19.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "vocab = ['<bos>', '<eos>', 'the', 'cat', 'sat', 'on', 'mat']\n",
+      "V = len(vocab)\n",
+      "d = 4\n",
+      "\n",
+      "tok2id = {tok: i for i, tok in enumerate(vocab)}\n",
+      "id2tok = {i: tok for tok, i in tok2id.items()}\n",
+      "\n",
+      "# Bijectivity of vocabulary index\n",
+      "assert len(set(tok2id.values())) == V                  # injective\n",
+      "assert set(tok2id.values()) == set(range(V))           # surjective onto {0,...,V-1}\n",
+      "print('vocabulary index is a bijection V <-> {0,...,V-1}')\n",
+      "\n",
+      "E = np.random.randn(V, d).astype(np.float32)\n",
+      "print('embedding matrix shape:', E.shape)\n",
+      "for tok in ['cat', 'mat']:\n",
+      "    print(f'E[{tok!r}] =', E[tok2id[tok]])\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

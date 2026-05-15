@@ -1,0 +1,147 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Inner products, norms, and Cauchy-Schwarz\n",
+      "\n",
+      "The dot product on $\\mathbb{R}^n$ is $\\langle x,y\\rangle=\\sum_i x_iy_i$, and its induced norm is $\\|x\\|=\\sqrt{\\langle x,x\\rangle}$. Cauchy-Schwarz says $|\\langle x,y\\rangle|\\le\\|x\\|\\,\\|y\\|$. We numerically verify this on 50 random pairs in $\\mathbb{R}^{10}$ by computing the ratio $|\\langle x,y\\rangle|/(\\|x\\|\\|y\\|)$ -- it must always be $\\le 1$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "n_pairs, dim = 50, 10\n",
+      "ratios = []\n",
+      "for _ in range(n_pairs):\n",
+      "    x = np.random.randn(dim)\n",
+      "    y = np.random.randn(dim)\n",
+      "    inner = float(np.dot(x, y))\n",
+      "    nx = float(np.linalg.norm(x))\n",
+      "    ny = float(np.linalg.norm(y))\n",
+      "    ratios.append(abs(inner) / (nx * ny))\n",
+      "\n",
+      "ratios = np.array(ratios)\n",
+      "print(f'pairs tested        : {n_pairs}')\n",
+      "print(f'max  |<x,y>|/(|x||y|): {ratios.max():.6f}')\n",
+      "print(f'mean |<x,y>|/(|x||y|): {ratios.mean():.6f}')\n",
+      "assert ratios.max() <= 1.0 + 1e-12, 'Cauchy-Schwarz violated!'\n",
+      "print('Cauchy-Schwarz holds for all 50 pairs.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Eigenvalues of symmetric matrices\n",
+      "\n",
+      "The spectral theorem says every real symmetric matrix $A$ has an orthonormal eigenbasis: $A=Q\\Lambda Q^\\top$. Below we build a symmetric $5\\times5$ matrix $A=M+M^\\top$, diagonalize with `np.linalg.eigh` (which exploits symmetry), and verify both $A v_i=\\lambda_i v_i$ for every $i$ and $V^\\top V=I$ (orthonormal eigenvectors).\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "M = np.random.randn(5, 5)\n",
+      "A = M + M.T\n",
+      "assert np.allclose(A, A.T)\n",
+      "\n",
+      "eigvals, V = np.linalg.eigh(A)\n",
+      "print('eigenvalues:', np.round(eigvals, 6))\n",
+      "\n",
+      "max_eig_residual = 0.0\n",
+      "for i in range(A.shape[0]):\n",
+      "    lhs = A @ V[:, i]\n",
+      "    rhs = eigvals[i] * V[:, i]\n",
+      "    max_eig_residual = max(max_eig_residual, float(np.linalg.norm(lhs - rhs)))\n",
+      "print(f'max ||A v_i - lambda_i v_i|| : {max_eig_residual:.2e}')\n",
+      "\n",
+      "ortho_err = float(np.linalg.norm(V.T @ V - np.eye(5)))\n",
+      "print(f'||V^T V - I||_F              : {ortho_err:.2e}')\n",
+      "\n",
+      "assert max_eig_residual < 1e-10\n",
+      "assert ortho_err < 1e-10\n",
+      "print('Spectral theorem verified numerically.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Singular value decomposition\n",
+      "\n",
+      "Every $A\\in\\mathbb{R}^{m\\times n}$ admits an SVD $A=U\\Sigma V^\\top$ with $U,V$ orthogonal and $\\Sigma$ diagonal with nonnegative entries. We build a random $5\\times3$ matrix, run `np.linalg.svd`, and reconstruct $A$ to high precision.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "A = np.random.randn(5, 3)\n",
+      "U, s, Vt = np.linalg.svd(A, full_matrices=True)\n",
+      "\n",
+      "Sigma = np.zeros_like(A)\n",
+      "Sigma[:len(s), :len(s)] = np.diag(s)\n",
+      "A_reco = U @ Sigma @ Vt\n",
+      "\n",
+      "print('singular values        :', np.round(s, 6))\n",
+      "print('U shape, Sigma shape, Vt shape:', U.shape, Sigma.shape, Vt.shape)\n",
+      "print(f'||A - U Sigma V^T||_F  : {np.linalg.norm(A - A_reco):.2e}')\n",
+      "print(f'||U^T U - I||_F        : {np.linalg.norm(U.T @ U - np.eye(5)):.2e}')\n",
+      "print(f'||V V^T - I||_F        : {np.linalg.norm(Vt @ Vt.T - np.eye(3)):.2e}')\n",
+      "\n",
+      "assert np.linalg.norm(A - A_reco) < 1e-10\n",
+      "print('SVD reconstruction verified.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Eckart-Young: best low-rank approximation\n",
+      "\n",
+      "Eckart-Young says the best rank-$k$ approximation of $A$ in Frobenius norm is the truncated SVD $A_k=\\sum_{i=1}^k\\sigma_i u_i v_i^\\top$, with squared error $\\sum_{i>k}\\sigma_i^2$. We compute rank-1 and rank-2 truncations of the same $5\\times3$ matrix and observe a strict monotone decrease in error, matching the predicted tail sum of squared singular values.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "A = np.random.randn(5, 3)\n",
+      "U, s, Vt = np.linalg.svd(A, full_matrices=False)\n",
+      "\n",
+      "errors = {}\n",
+      "for k in (1, 2, 3):\n",
+      "    A_k = (U[:, :k] * s[:k]) @ Vt[:k, :]\n",
+      "    err = float(np.linalg.norm(A - A_k))\n",
+      "    predicted = float(np.sqrt(np.sum(s[k:] ** 2)))\n",
+      "    errors[k] = err\n",
+      "    print(f'rank {k}: ||A - A_k||_F = {err:.6f}   predicted sqrt(sum sigma_i^2 for i>k) = {predicted:.6f}')\n",
+      "\n",
+      "assert errors[1] >= errors[2] >= errors[3]\n",
+      "assert errors[3] < 1e-10\n",
+      "print('Frobenius error decreases monotonically with rank, as Eckart-Young predicts.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

@@ -1,0 +1,112 @@
+\subsection*{Motivation}
+
+A neural network is a function $F:\mathbb{R}^n\to\mathbb{R}^m$ built by composing many simple maps; training it requires the gradient of a scalar loss with respect to a high-dimensional parameter vector. Chapter~3 handled the one-dimensional theory: existence of $f'(a)$, the mean value theorem (MVT), and the single-variable chain rule through the Carath\'eodory factorization $f(x)-f(a)=\varphi(x)(x-a)$ with $\varphi$ continuous at $a$. We now lift these ideas to several variables. Two pitfalls: (i) the \emph{correct} notion of differentiability is \emph{not} ``all partials exist'' but the stronger Fr\'echet condition, and (ii) the chain rule becomes a matrix product---the operation iterated by backpropagation in Chapter~18.
+
+\subsection*{Definitions}
+
+Let $f:U\to\mathbb{R}^m$ with $U\subseteq\mathbb{R}^n$ open, $\mathbf{a}\in U$, and $\mathbf{e}_i$ the $i$-th standard basis vector.
+
+\begin{definition}[Partial derivative]
+$\dfrac{\partial f}{\partial x_i}(\mathbf{a}) := \lim_{h\to 0}\dfrac{f(\mathbf{a}+h\mathbf{e}_i)-f(\mathbf{a})}{h}$, when the limit exists.
+\end{definition}
+
+\begin{definition}[Directional derivative]
+For a unit vector $\mathbf{v}$, $D_\mathbf{v} f(\mathbf{a}):=\lim_{t\to 0}\dfrac{f(\mathbf{a}+t\mathbf{v})-f(\mathbf{a})}{t}$.
+\end{definition}
+
+\begin{definition}[Fr\'echet differentiability]
+$f$ is \emph{differentiable} at $\mathbf{a}$ if there exists a linear $L:\mathbb{R}^n\to\mathbb{R}^m$ with
+\[
+\lim_{\mathbf{h}\to\mathbf{0}}\frac{\|f(\mathbf{a}+\mathbf{h})-f(\mathbf{a})-L\mathbf{h}\|}{\|\mathbf{h}\|}=0,
+\]
+i.e.\ the remainder is $o(\|\mathbf{h}\|)$. The matrix of $L$ in the standard basis is the \emph{Jacobian} $J_f(\mathbf{a})\in\mathbb{R}^{m\times n}$. When $m=1$, the \emph{gradient} is $\nabla f(\mathbf{a}):=J_f(\mathbf{a})^\top$.
+\end{definition}
+
+\begin{remark}
+Differentiability is strictly stronger than existence of partials: $f(x,y)=xy/(x^2+y^2)$ (with $f(0,0)=0$) has both partials zero at the origin, yet $f$ is discontinuous there and so not Fr\'echet differentiable.
+\end{remark}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Differentiable implies partials exist; $L=J_f$]
+If $f$ is differentiable at $\mathbf{a}$ with derivative $L$, then $\partial f/\partial x_j(\mathbf{a})$ exists for every $j$ and equals the $j$-th column of the matrix of $L$.
+\end{theorem}
+
+\begin{proof}
+Take $\mathbf{h}=h\mathbf{e}_j$, $h\neq 0$. Differentiability yields
+\[
+f(\mathbf{a}+h\mathbf{e}_j)-f(\mathbf{a}) = h\,L\mathbf{e}_j + r(h),\qquad \|r(h)\|/|h|\to 0.
+\]
+Divide by $h$ and let $h\to 0$: the left side tends to $\partial f/\partial x_j(\mathbf{a})$ by Definition~1, the right side to $L\mathbf{e}_j$. Hence the partial exists and equals the $j$-th column of $L$.
+\end{proof}
+
+\begin{theorem}[Continuous partials imply differentiability]
+If all $\partial f/\partial x_j$ exist on a neighborhood of $\mathbf{a}$ and are continuous at $\mathbf{a}$, then $f$ is differentiable at $\mathbf{a}$.
+\end{theorem}
+
+\begin{proof}[Sketch]
+Reduce to scalar codomain componentwise. Telescope along axes:
+\[
+f(\mathbf{a}+\mathbf{h})-f(\mathbf{a}) = \sum_{j=1}^n\!\Big[f(\mathbf{a}+\mathbf{h}_{<j}+h_j\mathbf{e}_j)-f(\mathbf{a}+\mathbf{h}_{<j})\Big],\qquad \mathbf{h}_{<j}:=\!\!\sum_{i<j} h_i\mathbf{e}_i.
+\]
+The single-variable MVT (Chapter~3) applied to the $j$-th summand produces $\xi_j$ between $0$ and $h_j$ with
+\[
+f(\mathbf{a}+\mathbf{h}_{<j}+h_j\mathbf{e}_j)-f(\mathbf{a}+\mathbf{h}_{<j}) = h_j\,\partial_j f(\mathbf{a}+\mathbf{h}_{<j}+\xi_j\mathbf{e}_j).
+\]
+Subtract $\sum_j h_j\,\partial_j f(\mathbf{a})$. By continuity of each $\partial_j f$, the difference $|\partial_j f(\cdot)-\partial_j f(\mathbf{a})|\to 0$ as $\mathbf{h}\to\mathbf{0}$. Cauchy--Schwarz then bounds the remainder by $\|\mathbf{h}\|\cdot \varepsilon(\mathbf{h})$ with $\varepsilon\to 0$, i.e.\ $o(\|\mathbf{h}\|)$. (Spivak, \emph{Calculus on Manifolds}, Thm.~2-8.)
+\end{proof}
+
+\begin{theorem}[Multivariate chain rule]
+If $g:\mathbb{R}^k\to\mathbb{R}^n$ is differentiable at $\mathbf{a}$ and $f:\mathbb{R}^n\to\mathbb{R}^m$ is differentiable at $\mathbf{b}=g(\mathbf{a})$, then $f\circ g$ is differentiable at $\mathbf{a}$ with
+\[
+J_{f\circ g}(\mathbf{a}) = J_f(\mathbf{b})\,J_g(\mathbf{a}).
+\]
+\end{theorem}
+
+\begin{proof}
+Write the Carath\'eodory-style remainders
+\(
+\rho_g(\mathbf{h}) := g(\mathbf{a}+\mathbf{h})-g(\mathbf{a})-J_g(\mathbf{a})\mathbf{h}=o(\|\mathbf{h}\|),\)
+and \(\rho_f(\mathbf{k})=o(\|\mathbf{k}\|).\) Let $\mathbf{k}(\mathbf{h}):=g(\mathbf{a}+\mathbf{h})-g(\mathbf{a})$. Then
+\begin{align*}
+f(g(\mathbf{a}+\mathbf{h})) - f(g(\mathbf{a}))
+ &= J_f(\mathbf{b})\,\mathbf{k}(\mathbf{h}) + \rho_f(\mathbf{k}(\mathbf{h}))\\
+ &= J_f(\mathbf{b})J_g(\mathbf{a})\mathbf{h} + J_f(\mathbf{b})\rho_g(\mathbf{h}) + \rho_f(\mathbf{k}(\mathbf{h})).
+\end{align*}
+Bound: $\|J_f(\mathbf{b})\rho_g(\mathbf{h})\|\le \|J_f(\mathbf{b})\|_{\mathrm{op}}\cdot o(\|\mathbf{h}\|)=o(\|\mathbf{h}\|)$. For the last term, $\|\mathbf{k}(\mathbf{h})\|\le (\|J_g(\mathbf{a})\|_{\mathrm{op}}+1)\|\mathbf{h}\|$ for small $\|\mathbf{h}\|$, hence $\rho_f(\mathbf{k}(\mathbf{h}))=o(\|\mathbf{k}\|)=o(\|\mathbf{h}\|)$. The total remainder is $o(\|\mathbf{h}\|)$, so $f\circ g$ is differentiable with derivative $J_f(\mathbf{b})J_g(\mathbf{a})$.
+\end{proof}
+
+\begin{theorem}[Schwarz / Clairaut]
+If $f:U\to\mathbb{R}$ is $C^2$ on $U$ open and $\mathbf{a}\in U$, then for all $i,j$
+\[
+\frac{\partial^2 f}{\partial x_i\,\partial x_j}(\mathbf{a}) = \frac{\partial^2 f}{\partial x_j\,\partial x_i}(\mathbf{a}).
+\]
+\end{theorem}
+
+\begin{proof}
+Fix $i\neq j$ and restrict to the two-variable slice in coordinates $x_i,x_j$ (other coordinates frozen at the values of $\mathbf{a}$). Define the second difference
+\[
+\Delta(h,k) := f(\mathbf{a}+h\mathbf{e}_i+k\mathbf{e}_j) - f(\mathbf{a}+h\mathbf{e}_i) - f(\mathbf{a}+k\mathbf{e}_j) + f(\mathbf{a}).
+\]
+Let $\varphi(s):=f(\mathbf{a}+s\mathbf{e}_i+k\mathbf{e}_j)-f(\mathbf{a}+s\mathbf{e}_i)$, so $\Delta(h,k)=\varphi(h)-\varphi(0)$. By MVT in $s$: $\Delta=h\,\varphi'(\xi)$ for some $\xi\in(0,h)$, with
+\[
+\varphi'(\xi) = \partial_i f(\mathbf{a}+\xi\mathbf{e}_i+k\mathbf{e}_j) - \partial_i f(\mathbf{a}+\xi\mathbf{e}_i).
+\]
+Apply MVT again, this time in $k$: $\varphi'(\xi)=k\,\partial_j\partial_i f(\mathbf{a}+\xi\mathbf{e}_i+\eta\mathbf{e}_j)$ for some $\eta\in(0,k)$. Hence
+\[
+\Delta(h,k) = hk\,\partial_j\partial_i f(\mathbf{a}+\xi\mathbf{e}_i+\eta\mathbf{e}_j).
+\]
+By the symmetric argument starting with $\psi(t):=f(\mathbf{a}+h\mathbf{e}_i+t\mathbf{e}_j)-f(\mathbf{a}+t\mathbf{e}_j)$, $\Delta(h,k)=hk\,\partial_i\partial_j f(\mathbf{a}+\xi'\mathbf{e}_i+\eta'\mathbf{e}_j)$. Divide by $hk$ and let $(h,k)\to(0,0)$. Continuity of the second partials ($C^2$) makes both sides converge to $\partial_j\partial_i f(\mathbf{a})$ and $\partial_i\partial_j f(\mathbf{a})$ respectively, which are therefore equal.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The accompanying notebook verifies every theorem numerically: gradient of $f(x,y)=x^2y+\sin(x+y)$ via central differences; Jacobian of $\mathbf{f}(x,y,z)=(xyz,\,x^2+\sin y+e^z)$ column-by-column; chain rule on $f\circ g$ with $g(t)=(\cos t,\sin t),\ f(x,y)=x^2+y^2$ (composite identically $1$, so the chain-rule product must vanish); equality of mixed partials for $f(x,y)=x^3y^2+\sin(xy)$.
+
+\subsection*{Connection to LLMs}
+
+A transformer is a composition $F = F_L\circ\cdots\circ F_1$ of differentiable layers, scored by a scalar loss $\mathcal{L}=\ell\circ F$. Theorem~4.7 states
+\[
+\nabla_{\theta_\ell}\mathcal{L} = \big(J_\ell(F(x))\,J_{F_L}\cdots J_{F_{\ell+1}}\big)\,\frac{\partial F_\ell}{\partial \theta_\ell}.
+\]
+\textbf{Backpropagation never materializes any $J_{F_k}$.} It propagates the row vector $\mathbf{v}^\top := J_\ell\,J_{F_L}\cdots J_{F_{\ell+1}}$ right-to-left via \emph{vector--Jacobian products} (VJPs)---one per layer, each at $O(\text{forward cost})$. Reverse-mode autodiff is precisely Theorem~4.7 with associativity exploited; we derive the algorithm formally in Chapter~18.

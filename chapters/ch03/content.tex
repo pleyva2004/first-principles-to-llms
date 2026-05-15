@@ -1,0 +1,133 @@
+\subsection*{Motivation}
+
+Chapter~2 built the language of limits ($\varepsilon$--$N$ for sequences and $\varepsilon$--$\delta$ for functions). \emph{Continuity} asserts that small input perturbations cause small output perturbations; \emph{differentiability} strengthens this to ``the perturbation is asymptotically linear.'' Both notions sit beneath every gradient that flows through a neural network. The chain rule, the central theorem of this chapter, is precisely the algebraic identity that backpropagation evaluates at scale (forward to Chapter~18).
+
+\subsection*{Definitions}
+
+\begin{definition}[$\varepsilon$--$\delta$ continuity at a point]
+Let $f:D\subseteq\mathbb{R}\to\mathbb{R}$ and $a\in D$. We say $f$ is \emph{continuous at $a$} iff
+\[
+\forall\,\varepsilon>0\;\exists\,\delta>0:\;|x-a|<\delta\text{ and }x\in D\;\Longrightarrow\;|f(x)-f(a)|<\varepsilon.
+\]
+$f$ is \emph{continuous on $S\subseteq D$} iff it is continuous at every $a\in S$.
+\end{definition}
+
+\begin{proposition}[Sequential characterization]\label{prop:seq}
+$f$ is continuous at $a$ iff for every sequence $x_n\to a$ in $D$ we have $f(x_n)\to f(a)$.
+\end{proposition}
+
+\begin{proof}
+$(\Rightarrow)$ Given $\varepsilon>0$, pick $\delta$ from continuity; since $x_n\to a$, eventually $|x_n-a|<\delta$, hence $|f(x_n)-f(a)|<\varepsilon$. $(\Leftarrow)$ Suppose $f$ is not continuous at $a$: some $\varepsilon_0>0$ admits no working $\delta$, so for each $n\in\mathbb{N}$ pick $x_n$ with $|x_n-a|<1/n$ but $|f(x_n)-f(a)|\ge\varepsilon_0$. Then $x_n\to a$ and yet $f(x_n)\not\to f(a)$, contradicting the hypothesis.
+\end{proof}
+
+\begin{definition}[Differentiability]
+For $a$ an interior point of $D$, $f$ is \emph{differentiable at $a$} iff
+\[
+f'(a)\;:=\;\lim_{h\to 0}\frac{f(a+h)-f(a)}{h}
+\]
+exists in $\mathbb{R}$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Differentiable $\Rightarrow$ continuous]\label{thm:diffcont}
+If $f$ is differentiable at $a$, then $f$ is continuous at $a$.
+\end{theorem}
+
+\begin{proof}
+For $h\ne 0$ we have the algebraic identity
+\[
+f(a+h)-f(a)=h\cdot\frac{f(a+h)-f(a)}{h}.
+\]
+By limit algebra (Chapter~2), the right-hand side tends to $0\cdot f'(a)=0$ as $h\to 0$. Hence $\lim_{h\to 0}f(a+h)=f(a)$, which is continuity at $a$.
+\end{proof}
+
+\begin{theorem}[Sum, product, quotient rules]\label{thm:rules}
+Let $f,g$ be differentiable at $a$. Then $f+g$, $fg$, and (provided $g(a)\ne 0$) $f/g$ are differentiable at $a$, with
+\[
+(f+g)'(a)=f'(a)+g'(a),\qquad (fg)'(a)=f'(a)g(a)+f(a)g'(a),
+\]
+\[
+\Bigl(\frac{f}{g}\Bigr)'(a)=\frac{f'(a)g(a)-f(a)g'(a)}{g(a)^2}.
+\]
+\end{theorem}
+
+\begin{proof}[Proof of the product rule]
+Use the add-and-subtract trick:
+\begin{align*}
+\frac{(fg)(a+h)-(fg)(a)}{h}
+&=\frac{f(a+h)g(a+h)-f(a)g(a+h)}{h}+\frac{f(a)g(a+h)-f(a)g(a)}{h}\\
+&=\frac{f(a+h)-f(a)}{h}\,g(a+h)\;+\;f(a)\,\frac{g(a+h)-g(a)}{h}.
+\end{align*}
+By Theorem~\ref{thm:diffcont}, $g(a+h)\to g(a)$ as $h\to 0$. The two difference quotients tend to $f'(a)$ and $g'(a)$ respectively. Limit algebra yields $f'(a)g(a)+f(a)g'(a)$. Sum and quotient rules are analogous (use the algebraic identity $\tfrac{1}{g(a+h)}-\tfrac{1}{g(a)}=-\tfrac{g(a+h)-g(a)}{g(a+h)g(a)}$ and continuity of $g$).
+\end{proof}
+
+\begin{theorem}[Chain rule, Carath\'eodory form]\label{thm:chain}
+Let $g$ be differentiable at $a$ and $f$ differentiable at $b:=g(a)$. Then $f\circ g$ is differentiable at $a$ and
+\[
+(f\circ g)'(a)=f'(g(a))\cdot g'(a).
+\]
+\end{theorem}
+
+\begin{proof}
+Define the \emph{Carath\'eodory function}
+\[
+\phi(y):=
+\begin{cases}
+\dfrac{f(y)-f(b)}{y-b}, & y\ne b,\\[2pt]
+f'(b), & y=b.
+\end{cases}
+\]
+By the definition of $f'(b)$, $\phi$ is continuous at $b$. For \emph{every} $y$ in a neighborhood of $b$,
+\[
+f(y)-f(b)=\phi(y)\,(y-b),\tag{$\star$}
+\]
+which holds at $y=b$ trivially and by construction otherwise --- a key advantage: no division by zero is ever required. Apply $(\star)$ with $y=g(x)$:
+\[
+\frac{f(g(x))-f(g(a))}{x-a}=\phi(g(x))\cdot\frac{g(x)-g(a)}{x-a}.
+\]
+As $x\to a$, $g(x)\to g(a)=b$ by Theorem~\ref{thm:diffcont}, and $\phi$ is continuous at $b$, so $\phi(g(x))\to\phi(b)=f'(b)$ by Proposition~\ref{prop:seq}. The second factor tends to $g'(a)$. Limit algebra closes the proof.
+\end{proof}
+
+\begin{remark}
+The Carath\'eodory device sidesteps the classical pitfall of the difference-quotient proof, where one must handle the case $g(x)=g(a)$ for $x$ arbitrarily close to $a$ (e.g.\ $g$ constant on a sequence). Here $\phi$ is defined everywhere, so the identity $(\star)$ requires no caveat.
+\end{remark}
+
+\begin{lemma}[Rolle]\label{lem:rolle}
+If $f$ is continuous on $[a,b]$, differentiable on $(a,b)$, and $f(a)=f(b)$, then there exists $c\in(a,b)$ with $f'(c)=0$.
+\end{lemma}
+
+\begin{proof}
+By the extreme value theorem (Chapter~4, via compactness of $[a,b]$), $f$ attains its maximum $M$ and minimum $m$ on $[a,b]$. If $M=m$ then $f$ is constant and any $c\in(a,b)$ works. Otherwise an extremum is attained at some interior $c\in(a,b)$; Fermat's interior-extremum lemma --- one-sided difference quotients have opposite signs at an interior extremum, so the two-sided limit $f'(c)$ must equal $0$ --- finishes the job.
+\end{proof}
+
+\begin{theorem}[Mean value theorem]\label{thm:mvt}
+If $f$ is continuous on $[a,b]$ and differentiable on $(a,b)$, then there exists $c\in(a,b)$ with
+\[
+f'(c)=\frac{f(b)-f(a)}{b-a}.
+\]
+\end{theorem}
+
+\begin{proof}
+Define the auxiliary function
+\[
+h(x):=f(x)-\frac{f(b)-f(a)}{b-a}(x-a).
+\]
+Then $h$ is continuous on $[a,b]$ (sum/product of continuous functions) and differentiable on $(a,b)$ with
+\[
+h'(x)=f'(x)-\frac{f(b)-f(a)}{b-a}.
+\]
+Direct computation gives $h(a)=f(a)$ and $h(b)=f(b)-(f(b)-f(a))=f(a)$, so $h(a)=h(b)$. By Lemma~\ref{lem:rolle} there exists $c\in(a,b)$ with $h'(c)=0$, i.e.\ $f'(c)=(f(b)-f(a))/(b-a)$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook (\texttt{cells.json}) (i)~certifies $\varepsilon$--$\delta$ continuity for $f(x)=x^2$ at $a=2$ by binary-search on $\delta$ for $\varepsilon\in\{10^{-1},10^{-2},10^{-3}\}$; (ii)~plots the $O(h)$ error of the forward-difference approximation to $\sin'$; (iii)~verifies the chain rule for $f(x)=\sin(x^2)$ at $x=1$ to $\sim 10^{-7}$; (iv)~finds an MVT witness $c\in(0,2)$ for $f(x)=x^3-2x$ by bisection.
+
+\subsection*{Connection to LLMs}
+
+A transformer is a composition $L_K\circ L_{K-1}\circ\cdots\circ L_1$ of differentiable layers. The gradient of the loss with respect to any parameter $\theta$ in layer $i$ is, by iterated application of Theorem~\ref{thm:chain},
+\[
+\frac{\partial \mathcal{L}}{\partial \theta}=\frac{\partial \mathcal{L}}{\partial L_K}\cdot\frac{\partial L_K}{\partial L_{K-1}}\cdots\frac{\partial L_{i+1}}{\partial L_i}\cdot\frac{\partial L_i}{\partial \theta}.
+\]
+\textbf{Backpropagation is precisely the right-to-left evaluation of this product} (Chapter~18). The MVT, in turn, underwrites convergence proofs for gradient descent (Chapter~14): it bounds $|f(x)-f(y)|\le\sup|f'|\cdot|x-y|$, the Lipschitz hypothesis under which descent provably decreases the loss. Without the chain rule, deep learning does not exist.

@@ -1,0 +1,86 @@
+\subsection*{Motivation}
+
+Every object in this book---a vector, a probability distribution, a neural network, a token---is ultimately a \emph{set with structure}. Before we can build the embedding map of Chapter~19 or even define the real numbers in Chapter~5, we need a precise grammar for membership, functions, and proof. Chapter~8 (linear maps) treats functions between vector spaces; Chapter~15 (probability) treats measures on $\sigma$-algebras of sets. Both collapse without the vocabulary below. We therefore start, with no apology, from the bottom.
+
+\subsection*{Definitions}
+
+\begin{definition}[Set, membership, subset]
+A \emph{set} $S$ is a collection of distinct objects called elements. We write $x \in S$ when $x$ is an element of $S$, and $x \notin S$ otherwise. The \emph{empty set} $\emptyset$ is the unique set with no elements. We say $A$ is a \emph{subset} of $B$, written $A \subset B$, iff $\forall x\,(x \in A \Rightarrow x \in B)$. Two sets are equal, $A = B$, iff $A \subset B$ and $B \subset A$.
+\end{definition}
+
+\begin{definition}[Boolean operations]
+Given $A, B$ inside a universe $U$:
+\begin{align*}
+A \cup B &:= \{x \in U : x \in A \lor x \in B\}, \\
+A \cap B &:= \{x \in U : x \in A \land x \in B\}, \\
+A^{c}    &:= \{x \in U : x \notin A\}, \\
+\mathcal{P}(S) &:= \{T : T \subset S\}.
+\end{align*}
+\end{definition}
+
+\begin{definition}[Function, image, preimage]
+A \emph{function} $f : A \to B$ assigns to each $a \in A$ exactly one $f(a) \in B$. The image is $f(A) := \{f(a) : a \in A\}$ and the preimage of $T \subset B$ is $f^{-1}(T) := \{a \in A : f(a) \in T\}$. We call $f$:
+\begin{itemize}
+  \item \emph{injective} iff $\forall a_1, a_2 \in A,\ f(a_1) = f(a_2) \Rightarrow a_1 = a_2$;
+  \item \emph{surjective} iff $\forall b \in B,\ \exists a \in A,\ f(a) = b$;
+  \item \emph{bijective} iff both.
+\end{itemize}
+\end{definition}
+
+\begin{remark}[Logic]
+Propositional connectives: $\land, \lor, \neg, \Rightarrow, \Leftrightarrow$. Quantifiers: $\forall, \exists$. Standard proof techniques: \emph{direct} (assume $P$, derive $Q$), \emph{contrapositive} ($P \Rightarrow Q \equiv \neg Q \Rightarrow \neg P$), \emph{contradiction} (assume $\neg P$, derive $\bot$), and \emph{induction} (Theorem~\ref{thm:induction}).
+\end{remark}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[De Morgan's laws for sets]\label{thm:demorgan}
+For sets $A, B \subset U$,
+\[
+(A \cup B)^{c} = A^{c} \cap B^{c}
+\qquad\text{and}\qquad
+(A \cap B)^{c} = A^{c} \cup B^{c}.
+\]
+\end{theorem}
+
+\begin{proof}
+We prove the first; the second is symmetric. Fix arbitrary $x \in U$. We show the biconditional $x \in (A \cup B)^{c} \Leftrightarrow x \in A^{c} \cap B^{c}$.
+
+\textbf{$(\Rightarrow)$} Assume $x \in (A \cup B)^{c}$. By definition, $x \notin A \cup B$, i.e.\ $\neg(x \in A \lor x \in B)$. By the propositional De Morgan law $\neg(P \lor Q) \equiv \neg P \land \neg Q$, this is $\neg(x \in A) \land \neg(x \in B)$, i.e.\ $x \notin A$ and $x \notin B$. Hence $x \in A^{c}$ and $x \in B^{c}$, so $x \in A^{c} \cap B^{c}$.
+
+\textbf{$(\Leftarrow)$} Assume $x \in A^{c} \cap B^{c}$. Then $x \notin A$ and $x \notin B$, so $\neg(x \in A) \land \neg(x \in B)$, which by propositional De Morgan equals $\neg(x \in A \lor x \in B)$, i.e.\ $x \notin A \cup B$, i.e.\ $x \in (A \cup B)^{c}$.
+
+For the second identity, the same argument with $\land$ and $\lor$ interchanged (using $\neg(P \land Q) \equiv \neg P \lor \neg Q$) gives $x \in (A \cap B)^{c} \Leftrightarrow x \in A^{c} \cup B^{c}$.
+\end{proof}
+
+\begin{theorem}[Composition of injections is injective]\label{thm:compinj}
+If $f : A \to B$ and $g : B \to C$ are injective, then $g \circ f : A \to C$ is injective.
+\end{theorem}
+
+\begin{proof}
+Let $a_1, a_2 \in A$ with $(g \circ f)(a_1) = (g \circ f)(a_2)$, i.e.\ $g(f(a_1)) = g(f(a_2))$. Since $g$ is injective, $f(a_1) = f(a_2)$. Since $f$ is injective, $a_1 = a_2$. By definition $g \circ f$ is injective.
+\end{proof}
+
+\begin{theorem}[Principle of mathematical induction]\label{thm:induction}
+Let $P(n)$ be a predicate on $\mathbb{N} = \{1, 2, 3, \ldots\}$. If
+\begin{enumerate}
+  \item[\textup{(i)}] $P(1)$ holds, and
+  \item[\textup{(ii)}] $\forall n \in \mathbb{N},\ P(n) \Rightarrow P(n+1)$,
+\end{enumerate}
+then $\forall n \in \mathbb{N},\ P(n)$.
+\end{theorem}
+
+\begin{proof}
+We assume the well-ordering principle: every nonempty subset of $\mathbb{N}$ has a least element. Let
+\[
+S := \{n \in \mathbb{N} : \neg P(n)\}.
+\]
+We show $S = \emptyset$ by contradiction. Suppose $S \neq \emptyset$. By well-ordering, $S$ has a least element $m$. By (i), $P(1)$ holds, so $1 \notin S$, hence $m \geq 2$, so $m - 1 \in \mathbb{N}$. By minimality of $m$ in $S$, $m - 1 \notin S$, i.e.\ $P(m-1)$ holds. By (ii) applied at $n = m - 1$, $P(m)$ holds, so $m \notin S$. This contradicts $m \in S$. Therefore $S = \emptyset$, i.e.\ $P(n)$ holds for every $n \in \mathbb{N}$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+In the companion notebook we (a) enumerate $\mathcal{P}(\{a,b,c\})$ from scratch and verify $|\mathcal{P}(S)| = 2^{|S|}$; (b) brute-force De Morgan on $U = \{1, \ldots, 8\}$ with $A = \{1,3,5,7\}$, $B = \{2,3,5,7\}$; (c) implement \texttt{is\_injective}, \texttt{is\_surjective}, \texttt{is\_bijective} as predicates over finite functions encoded as Python dictionaries; (d) verify $\sum_{k=1}^{n} k = n(n+1)/2$ both by direct summation up to $n=20$ and by checking the induction step $S(n+1) - S(n) = n+1$ numerically.
+
+\subsection*{Connection to LLMs}
+
+A language model's \emph{vocabulary} $\mathcal{V}$ is a finite set of tokens (typically $|\mathcal{V}| \approx 5 \times 10^{4}$). The tokenizer is a function $T : \text{strings} \to \mathcal{V}^{*}$. The \emph{embedding map} $E : \mathcal{V} \to \mathbb{R}^{d}$ is a function from a finite set into a real vector space; the implementation as a lookup table $E[i]$ requires that the vocabulary index $\mathcal{V} \to \{0, 1, \ldots, |\mathcal{V}|-1\}$ be a \emph{bijection}. Injectivity guarantees distinct tokens get distinct rows; surjectivity guarantees every row is reachable. We revisit this in Chapter~19, where $E$ becomes the first learnable layer of the transformer. The rest of the book is, in a strict sense, a long story about which functions between which sets one is allowed to write down.

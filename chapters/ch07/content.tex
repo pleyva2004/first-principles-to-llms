@@ -1,0 +1,136 @@
+\subsection*{Motivation}
+
+Chapters 3 and 4 built derivatives, the chain rule, and gradients; Chapter 6 equipped $\mathbb{R}^n$ with a norm and the Cauchy--Schwarz inequality. With those in hand we can finally ask the optimization question that drives every line of training code in this book: given $f : \mathbb{R}^n \to \mathbb{R}$, what does the iteration $x_{t+1} = x_t - \eta \nabla f(x_t)$ actually do, and when does it converge?
+
+The honest answer for a transformer's loss is ``we don't know'': it is non-convex, the iterates are stochastic (Chapter 13), and rigorous global convergence is open. But the \emph{convex} case admits complete proofs, and those proofs supply the only quantitative vocabulary we have for the non-convex one --- smoothness, condition number, descent, contraction. Phrases like ``smooth loss landscape,'' ``warmup,'' and ``$1/L$ step size'' trace directly back to the two theorems below.
+
+\subsection*{Definitions}
+
+\begin{definition}[Convex set]
+$C \subseteq \mathbb{R}^n$ is \emph{convex} iff for all $x, y \in C$ and $t \in [0,1]$, $tx + (1-t)y \in C$.
+\end{definition}
+
+\begin{definition}[Convex function]
+$f : \mathbb{R}^n \to \mathbb{R}$ is \emph{convex} iff
+\[
+f(tx + (1-t)y) \leq t f(x) + (1-t) f(y) \quad \forall x, y \in \mathbb{R}^n,\; t \in [0,1].
+\]
+When $f$ is differentiable this is equivalent to the \emph{first-order} characterization $f(y) \geq f(x) + \langle \nabla f(x), y - x \rangle$: every tangent hyperplane lies below the graph.
+\end{definition}
+
+\begin{definition}[$L$-smoothness]
+$f$ is \emph{$L$-smooth} iff $\nabla f$ is $L$-Lipschitz: $\|\nabla f(x) - \nabla f(y)\| \leq L \|x - y\|$ for all $x, y$, with the Euclidean norm of Chapter 6.
+\end{definition}
+
+\begin{definition}[$\mu$-strong convexity]
+$f$ is \emph{$\mu$-strongly convex} iff for all $x, y$,
+\[
+f(y) \geq f(x) + \langle \nabla f(x), y - x \rangle + \tfrac{\mu}{2} \|y - x\|^2.
+\]
+The ratio $\kappa = L / \mu \geq 1$ is the \emph{condition number}.
+\end{definition}
+
+\begin{definition}[Gradient descent]
+Fix $x_0 \in \mathbb{R}^n$, step size $\eta > 0$. The \emph{gradient descent} iterates are $x_{t+1} = x_t - \eta \nabla f(x_t)$ for $t = 0, 1, 2, \ldots$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{lemma}[Descent lemma]
+If $f$ is $L$-smooth, then for all $x, y \in \mathbb{R}^n$,
+\[
+f(y) \leq f(x) + \langle \nabla f(x), y - x \rangle + \tfrac{L}{2}\|y - x\|^2.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $g(t) = f(x + t(y - x))$ on $[0,1]$. By the chain rule (Chapter 4), $g'(t) = \langle \nabla f(x + t(y-x)), y - x\rangle$, and the fundamental theorem of calculus gives
+\[
+f(y) - f(x) = g(1) - g(0) = \int_0^1 \langle \nabla f(x + t(y-x)),\, y - x \rangle \, dt.
+\]
+Subtract $\langle \nabla f(x), y - x \rangle$ from both sides:
+\[
+f(y) - f(x) - \langle \nabla f(x), y - x \rangle = \int_0^1 \langle \nabla f(x + t(y-x)) - \nabla f(x),\, y - x \rangle \, dt.
+\]
+By Cauchy--Schwarz (Chapter 6) and the Lipschitz hypothesis,
+\[
+\langle \nabla f(x + t(y-x)) - \nabla f(x),\, y - x \rangle \leq \|\nabla f(x + t(y-x)) - \nabla f(x)\|\,\|y - x\| \leq L t \|y - x\|^2.
+\]
+Integrating, $\int_0^1 L t \|y - x\|^2 \, dt = \tfrac{L}{2}\|y - x\|^2$.
+\end{proof}
+
+\begin{theorem}[GD on $L$-smooth convex]
+Let $f$ be convex and $L$-smooth with minimizer $x^*$ and minimum $f^* = f(x^*)$. Then gradient descent with $\eta = 1/L$ satisfies
+\[
+f(x_T) - f^* \;\leq\; \frac{L \|x_0 - x^*\|^2}{2T}, \qquad T \geq 1.
+\]
+\end{theorem}
+
+\begin{proof}
+Apply the descent lemma at $y = x_{t+1} = x_t - \tfrac{1}{L}\nabla f(x_t)$, $x = x_t$:
+\begin{equation}
+f(x_{t+1}) \leq f(x_t) - \tfrac{1}{2L}\|\nabla f(x_t)\|^2. \tag{$\star$}
+\end{equation}
+In particular $f(x_t)$ is non-increasing in $t$. Convexity at $x_t$ versus $x^*$ gives $f(x_t) - f^* \leq \langle \nabla f(x_t), x_t - x^*\rangle$. Expand the gradient step:
+\[
+\|x_{t+1} - x^*\|^2 = \|x_t - x^*\|^2 - \tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2,
+\]
+so
+\[
+\tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle = \|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2 + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2,
+\]
+hence
+\[
+f(x_t) - f^* \leq \tfrac{L}{2}\bigl(\|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2\bigr) + \tfrac{1}{2L}\|\nabla f(x_t)\|^2.
+\]
+Adding $(\star)$ rewritten as $\tfrac{1}{2L}\|\nabla f(x_t)\|^2 \leq f(x_t) - f(x_{t+1})$ to the right-hand side and rearranging,
+\[
+f(x_{t+1}) - f^* \leq \tfrac{L}{2}\bigl(\|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2\bigr).
+\]
+Telescope $t = 0, \ldots, T-1$:
+\[
+\sum_{t=0}^{T-1} \bigl(f(x_{t+1}) - f^*\bigr) \leq \tfrac{L}{2}\|x_0 - x^*\|^2.
+\]
+Since $f(x_t)$ is non-increasing, $T (f(x_T) - f^*) \leq \sum_{t=0}^{T-1}(f(x_{t+1}) - f^*)$, which yields the claim.
+\end{proof}
+
+\begin{theorem}[GD on $L$-smooth $\mu$-strongly convex]
+Let $f$ be $\mu$-strongly convex and $L$-smooth, with $\eta = 1/L$. Then
+\[
+\|x_t - x^*\|^2 \leq \bigl(1 - \mu/L\bigr)^t \|x_0 - x^*\|^2.
+\]
+\end{theorem}
+
+\begin{proof}
+Strong convexity at $x_t$ versus $x^*$ rearranges to
+\[
+\langle \nabla f(x_t), x_t - x^*\rangle \geq f(x_t) - f^* + \tfrac{\mu}{2}\|x_t - x^*\|^2,
+\]
+and from $(\star)$ in the previous proof, $\tfrac{1}{2L}\|\nabla f(x_t)\|^2 \leq f(x_t) - f(x_{t+1}) \leq f(x_t) - f^*$, i.e. $\tfrac{1}{L^2}\|\nabla f(x_t)\|^2 \leq \tfrac{2}{L}(f(x_t) - f^*)$. Substituting both into the gradient-step expansion,
+\begin{align*}
+\|x_{t+1} - x^*\|^2 &= \|x_t - x^*\|^2 - \tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2 \\
+&\leq \|x_t - x^*\|^2 - \tfrac{2}{L}\bigl(f(x_t) - f^* + \tfrac{\mu}{2}\|x_t - x^*\|^2\bigr) + \tfrac{2}{L}\bigl(f(x_t) - f^*\bigr) \\
+&= \bigl(1 - \tfrac{\mu}{L}\bigr)\|x_t - x^*\|^2.
+\end{align*}
+Iterate.
+\end{proof}
+
+\begin{remark}
+The contraction factor $1 - 1/\kappa$ degrades as the condition number $\kappa = L/\mu$ grows: ill-conditioned problems converge slowly. The optimal step $\eta = 2/(L + \mu)$ improves the per-step factor to $((\kappa - 1)/(\kappa + 1))^2$, but does not change the $O(\kappa \log(1/\varepsilon))$ iteration complexity scaling.
+\end{remark}
+
+\subsection*{Code sketch}
+
+Instantiate $f(x, y) = (x-1)^2 + 2(y+1)^2$, a strongly convex quadratic with Hessian $\operatorname{diag}(2, 4)$, so $\mu = 2$, $L = 4$. Gradient descent with $\eta = 1/L$ contracts $\|x_t - x^*\|^2$ by factor $1 - \mu/L = 1/2$ per step. For a degenerate $f(x) = \|Ax - b\|^2$ with $A \in \mathbb{R}^{20 \times 10}$ ill-conditioned, the strong-convexity rate degrades to the convex $O(1/T)$, visible as slope $\approx -1$ on a log-log plot of $f(x_T) - f^*$ versus $T$. A side-by-side run with $\eta = 1/L$ and the optimal $\eta = 2/(L + \mu)$ confirms the sharper contraction predicted by the remark.
+
+\subsection*{Connection to LLMs}
+
+Transformer losses are spectacularly non-convex: permuting attention heads or flipping signs in a layernorm gives an equivalent minimum. None of the theorems above apply globally. They apply \emph{locally}, and they supply the operating intuitions that survive the jump.
+
+\begin{itemize}
+\item \textbf{Smooth loss landscape.} The descent lemma says $\eta < 2/L$ is sufficient for monotone decrease. Empirically estimating local $L$ via the Hessian's top eigenvalue is exactly what learning-rate range tests and gradient-norm clipping approximate.
+\item \textbf{Warmup and LR scheduling} (Chapter 27). Early in training the local $L$ is large (sharp minima nearby); a small $\eta$ avoids the quadratic blow-up term in the descent lemma. As the trajectory enters flatter regions, $L$ drops and $\eta$ can grow.
+\item \textbf{SGD and AdamW} (Chapters 13, 14). Stochastic gradients break the deterministic descent lemma; the convergence proofs replace $(\star)$ with an expectation inequality plus a variance term, but the algebraic skeleton --- descent lemma, telescoping, contraction --- is preserved.
+\end{itemize}
+
+The convex theory is a load-bearing analogy: the only place where the rates are honest, and the conceptual scaffold for every heuristic layered on top.

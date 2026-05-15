@@ -33,7 +33,92 @@
 \section*{Chapter 1: Sets, functions, logic, proofs}
 \addcontentsline{toc}{section}{Chapter 1: Sets, functions, logic, proofs}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Every object in this book---a vector, a probability distribution, a neural network, a token---is ultimately a \emph{set with structure}. Before we can build the embedding map of Chapter~19 or even define the real numbers in Chapter~5, we need a precise grammar for membership, functions, and proof. Chapter~8 (linear maps) treats functions between vector spaces; Chapter~15 (probability) treats measures on $\sigma$-algebras of sets. Both collapse without the vocabulary below. We therefore start, with no apology, from the bottom.
+
+\subsection*{Definitions}
+
+\begin{definition}[Set, membership, subset]
+A \emph{set} $S$ is a collection of distinct objects called elements. We write $x \in S$ when $x$ is an element of $S$, and $x \notin S$ otherwise. The \emph{empty set} $\emptyset$ is the unique set with no elements. We say $A$ is a \emph{subset} of $B$, written $A \subset B$, iff $\forall x\,(x \in A \Rightarrow x \in B)$. Two sets are equal, $A = B$, iff $A \subset B$ and $B \subset A$.
+\end{definition}
+
+\begin{definition}[Boolean operations]
+Given $A, B$ inside a universe $U$:
+\begin{align*}
+A \cup B &:= \{x \in U : x \in A \lor x \in B\}, \\
+A \cap B &:= \{x \in U : x \in A \land x \in B\}, \\
+A^{c}    &:= \{x \in U : x \notin A\}, \\
+\mathcal{P}(S) &:= \{T : T \subset S\}.
+\end{align*}
+\end{definition}
+
+\begin{definition}[Function, image, preimage]
+A \emph{function} $f : A \to B$ assigns to each $a \in A$ exactly one $f(a) \in B$. The image is $f(A) := \{f(a) : a \in A\}$ and the preimage of $T \subset B$ is $f^{-1}(T) := \{a \in A : f(a) \in T\}$. We call $f$:
+\begin{itemize}
+  \item \emph{injective} iff $\forall a_1, a_2 \in A,\ f(a_1) = f(a_2) \Rightarrow a_1 = a_2$;
+  \item \emph{surjective} iff $\forall b \in B,\ \exists a \in A,\ f(a) = b$;
+  \item \emph{bijective} iff both.
+\end{itemize}
+\end{definition}
+
+\begin{remark}[Logic]
+Propositional connectives: $\land, \lor, \neg, \Rightarrow, \Leftrightarrow$. Quantifiers: $\forall, \exists$. Standard proof techniques: \emph{direct} (assume $P$, derive $Q$), \emph{contrapositive} ($P \Rightarrow Q \equiv \neg Q \Rightarrow \neg P$), \emph{contradiction} (assume $\neg P$, derive $\bot$), and \emph{induction} (Theorem~\ref{thm:induction}).
+\end{remark}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[De Morgan's laws for sets]\label{thm:demorgan}
+For sets $A, B \subset U$,
+\[
+(A \cup B)^{c} = A^{c} \cap B^{c}
+\qquad\text{and}\qquad
+(A \cap B)^{c} = A^{c} \cup B^{c}.
+\]
+\end{theorem}
+
+\begin{proof}
+We prove the first; the second is symmetric. Fix arbitrary $x \in U$. We show the biconditional $x \in (A \cup B)^{c} \Leftrightarrow x \in A^{c} \cap B^{c}$.
+
+\textbf{$(\Rightarrow)$} Assume $x \in (A \cup B)^{c}$. By definition, $x \notin A \cup B$, i.e.\ $\neg(x \in A \lor x \in B)$. By the propositional De Morgan law $\neg(P \lor Q) \equiv \neg P \land \neg Q$, this is $\neg(x \in A) \land \neg(x \in B)$, i.e.\ $x \notin A$ and $x \notin B$. Hence $x \in A^{c}$ and $x \in B^{c}$, so $x \in A^{c} \cap B^{c}$.
+
+\textbf{$(\Leftarrow)$} Assume $x \in A^{c} \cap B^{c}$. Then $x \notin A$ and $x \notin B$, so $\neg(x \in A) \land \neg(x \in B)$, which by propositional De Morgan equals $\neg(x \in A \lor x \in B)$, i.e.\ $x \notin A \cup B$, i.e.\ $x \in (A \cup B)^{c}$.
+
+For the second identity, the same argument with $\land$ and $\lor$ interchanged (using $\neg(P \land Q) \equiv \neg P \lor \neg Q$) gives $x \in (A \cap B)^{c} \Leftrightarrow x \in A^{c} \cup B^{c}$.
+\end{proof}
+
+\begin{theorem}[Composition of injections is injective]\label{thm:compinj}
+If $f : A \to B$ and $g : B \to C$ are injective, then $g \circ f : A \to C$ is injective.
+\end{theorem}
+
+\begin{proof}
+Let $a_1, a_2 \in A$ with $(g \circ f)(a_1) = (g \circ f)(a_2)$, i.e.\ $g(f(a_1)) = g(f(a_2))$. Since $g$ is injective, $f(a_1) = f(a_2)$. Since $f$ is injective, $a_1 = a_2$. By definition $g \circ f$ is injective.
+\end{proof}
+
+\begin{theorem}[Principle of mathematical induction]\label{thm:induction}
+Let $P(n)$ be a predicate on $\mathbb{N} = \{1, 2, 3, \ldots\}$. If
+\begin{enumerate}
+  \item[\textup{(i)}] $P(1)$ holds, and
+  \item[\textup{(ii)}] $\forall n \in \mathbb{N},\ P(n) \Rightarrow P(n+1)$,
+\end{enumerate}
+then $\forall n \in \mathbb{N},\ P(n)$.
+\end{theorem}
+
+\begin{proof}
+We assume the well-ordering principle: every nonempty subset of $\mathbb{N}$ has a least element. Let
+\[
+S := \{n \in \mathbb{N} : \neg P(n)\}.
+\]
+We show $S = \emptyset$ by contradiction. Suppose $S \neq \emptyset$. By well-ordering, $S$ has a least element $m$. By (i), $P(1)$ holds, so $1 \notin S$, hence $m \geq 2$, so $m - 1 \in \mathbb{N}$. By minimality of $m$ in $S$, $m - 1 \notin S$, i.e.\ $P(m-1)$ holds. By (ii) applied at $n = m - 1$, $P(m)$ holds, so $m \notin S$. This contradicts $m \in S$. Therefore $S = \emptyset$, i.e.\ $P(n)$ holds for every $n \in \mathbb{N}$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+In the companion notebook we (a) enumerate $\mathcal{P}(\{a,b,c\})$ from scratch and verify $|\mathcal{P}(S)| = 2^{|S|}$; (b) brute-force De Morgan on $U = \{1, \ldots, 8\}$ with $A = \{1,3,5,7\}$, $B = \{2,3,5,7\}$; (c) implement \texttt{is\_injective}, \texttt{is\_surjective}, \texttt{is\_bijective} as predicates over finite functions encoded as Python dictionaries; (d) verify $\sum_{k=1}^{n} k = n(n+1)/2$ both by direct summation up to $n=20$ and by checking the induction step $S(n+1) - S(n) = n+1$ numerically.
+
+\subsection*{Connection to LLMs}
+
+A language model's \emph{vocabulary} $\mathcal{V}$ is a finite set of tokens (typically $|\mathcal{V}| \approx 5 \times 10^{4}$). The tokenizer is a function $T : \text{strings} \to \mathcal{V}^{*}$. The \emph{embedding map} $E : \mathcal{V} \to \mathbb{R}^{d}$ is a function from a finite set into a real vector space; the implementation as a lookup table $E[i]$ requires that the vocabulary index $\mathcal{V} \to \{0, 1, \ldots, |\mathcal{V}|-1\}$ be a \emph{bijection}. Injectivity guarantees distinct tokens get distinct rows; surjectivity guarantees every row is reachable. We revisit this in Chapter~19, where $E$ becomes the first learnable layer of the transformer. The rest of the book is, in a strict sense, a long story about which functions between which sets one is allowed to write down.
 
 % --- CHAPTER 1 END ---
 
@@ -41,7 +126,102 @@
 \section*{Chapter 2: Numbers, sequences, limits, completeness}
 \addcontentsline{toc}{section}{Chapter 2: Numbers, sequences, limits, completeness}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+In Chapter 1 we built logic, sets, and proof technique. We now build the arithmetic playground in which all of analysis, optimization, and ultimately neural network training takes place: the real numbers $\mathbb{R}$. The central question of this chapter is not ``what are numbers?'' in a metaphysical sense but rather: \emph{what structural property of $\mathbb{R}$ makes it the right home for limits?} The answer is \textbf{completeness}, and it is what will let us, many chapters later, prove that gradient descent iterates $\theta_t \in \mathbb{R}^d$ actually converge.
+
+\subsection*{Definitions}
+
+We accept $\mathbb{N} = \{0, 1, 2, \ldots\}$ as constructed in Chapter 1 (von Neumann ordinals). The integers $\mathbb{Z}$ extend $\mathbb{N}$ by formal additive inverses; the rationals $\mathbb{Q}$ extend $\mathbb{Z}$ by formal multiplicative inverses of nonzero elements. We then take $\mathbb{R}$ to be a complete ordered field containing $\mathbb{Q}$ (constructed via Dedekind cuts or Cauchy completion of $\mathbb{Q}$). Thus
+\[
+\mathbb{N} \subset \mathbb{Z} \subset \mathbb{Q} \subset \mathbb{R}.
+\]
+
+\begin{definition}[Sequence]
+A \emph{sequence} in a set $X$ is a function $a : \mathbb{N} \to X$, written $(a_n)_{n \in \mathbb{N}}$.
+\end{definition}
+
+\begin{definition}[Limit, $\varepsilon$--$N$]
+A real sequence $(a_n)$ \emph{converges} to $L \in \mathbb{R}$, written $a_n \to L$, iff
+\[
+\forall \varepsilon > 0 \;\; \exists N \in \mathbb{N} \;\; \forall n \geq N : \;\; |a_n - L| < \varepsilon.
+\]
+\end{definition}
+
+\begin{definition}[Cauchy]
+$(a_n)$ is \emph{Cauchy} iff $\forall \varepsilon > 0\; \exists N\; \forall m, n \geq N : |a_m - a_n| < \varepsilon$.
+\end{definition}
+
+\begin{definition}[Bounded, monotone]
+$(a_n)$ is \emph{bounded above} iff $\exists M : a_n \leq M$ for all $n$; bounded below symmetrically; \emph{bounded} iff both. It is \emph{monotone increasing} iff $a_n \leq a_{n+1}$ for all $n$.
+\end{definition}
+
+\begin{definition}[Supremum, infimum]
+Let $S \subseteq \mathbb{R}$ be nonempty and bounded above. $u \in \mathbb{R}$ is an \emph{upper bound} if $s \leq u$ for all $s \in S$. The \emph{supremum} $\sup S$ is the least upper bound: an upper bound such that for every $\varepsilon > 0$ there exists $s \in S$ with $s > \sup S - \varepsilon$. The \emph{infimum} $\inf S$ is defined dually.
+\end{definition}
+
+\begin{definition}[Completeness axiom of $\mathbb{R}$]
+Every nonempty subset of $\mathbb{R}$ that is bounded above has a supremum in $\mathbb{R}$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Irrationality of $\sqrt{2}$]
+There is no rational $q$ with $q^2 = 2$.
+\end{theorem}
+
+\begin{proof}
+Suppose for contradiction (technique from Chapter 1) that $q = p/r$ with $p, r \in \mathbb{Z}$, $r \neq 0$, the fraction in lowest terms (so $\gcd(p, r) = 1$), and $q^2 = 2$. Then $p^2 = 2 r^2$, so $p^2$ is even, hence $p$ is even (since the square of an odd integer is odd). Write $p = 2k$. Substituting, $4 k^2 = 2 r^2$, i.e. $r^2 = 2 k^2$, so $r^2$ is even and therefore $r$ is even. But then $2 \mid \gcd(p, r)$, contradicting $\gcd(p, r) = 1$.
+\end{proof}
+
+\begin{remark}
+This is the first concrete witness that $\mathbb{Q}$ is \emph{incomplete}: the bounded-above set $S = \{q \in \mathbb{Q} : q^2 < 2\}$ has no supremum \emph{in $\mathbb{Q}$}. The completeness axiom is exactly the patch that distinguishes $\mathbb{R}$ from $\mathbb{Q}$.
+\end{remark}
+
+\begin{theorem}[Bounded monotone convergence]
+Let $(a_n)$ be monotone increasing and bounded above in $\mathbb{R}$. Then $(a_n)$ converges, and $\lim a_n = \sup_n a_n$.
+\end{theorem}
+
+\begin{proof}
+Let $S = \{a_n : n \in \mathbb{N}\}$. $S$ is nonempty (it contains $a_0$) and bounded above by hypothesis. By the completeness axiom, $L := \sup S$ exists in $\mathbb{R}$. Fix $\varepsilon > 0$. By the supremum's least-upper-bound property, $L - \varepsilon$ is \emph{not} an upper bound, so there exists $N \in \mathbb{N}$ with $a_N > L - \varepsilon$. For any $n \geq N$, monotonicity gives $a_n \geq a_N > L - \varepsilon$, while $a_n \leq L$ since $L$ is an upper bound. Hence
+\[
+L - \varepsilon < a_n \leq L \quad \Longrightarrow \quad |a_n - L| < \varepsilon,
+\]
+which is exactly the $\varepsilon$--$N$ definition of $\lim a_n = L$.
+\end{proof}
+
+\begin{lemma}[Bolzano--Weierstrass for $\mathbb{R}$]
+Every bounded real sequence has a convergent subsequence.
+\end{lemma}
+
+\begin{proof}
+Let $(a_n) \subseteq [c_0, d_0]$ with $c_0 < d_0$. Bisect at midpoint $m_0 = (c_0 + d_0)/2$; at least one of $[c_0, m_0]$, $[m_0, d_0]$ contains $a_n$ for infinitely many $n$ (else only finitely many terms total, contradicting $|\mathbb{N}| = \infty$). Call this half $[c_1, d_1]$ and pick an index $n_1$ with $a_{n_1} \in [c_1, d_1]$. Iterate: at stage $k$ we have nested $[c_k, d_k]$ of length $(d_0 - c_0) / 2^k$ each containing infinitely many terms, and pick $n_k > n_{k-1}$ with $a_{n_k} \in [c_k, d_k]$. The sequence $(c_k)$ is monotone increasing and bounded above by $d_0$, so by Theorem~2.8 it converges to some $L$; similarly $(d_k) \to L$ since $d_k - c_k = (d_0 - c_0)/2^k \to 0$. Since $c_k \leq a_{n_k} \leq d_k$, the squeeze gives $a_{n_k} \to L$.
+\end{proof}
+
+\begin{theorem}[Cauchy completeness of $\mathbb{R}$]
+Every Cauchy sequence in $\mathbb{R}$ converges.
+\end{theorem}
+
+\begin{proof}
+Let $(a_n)$ be Cauchy.
+
+\emph{Step 1 (bounded).} Pick $\varepsilon = 1$ and $N$ from the Cauchy condition; for $n \geq N$, $|a_n| \leq |a_N| + 1$, so $(a_n)$ is bounded by $M = \max(|a_0|, \ldots, |a_{N-1}|, |a_N| + 1)$.
+
+\emph{Step 2 (convergent subsequence).} By the Bolzano--Weierstrass lemma, some subsequence $a_{n_k} \to L$.
+
+\emph{Step 3 (full sequence).} Fix $\varepsilon > 0$. Choose $N_1$ with $|a_m - a_n| < \varepsilon/2$ for all $m, n \geq N_1$ (Cauchy property), and choose $K$ with $n_K \geq N_1$ and $|a_{n_K} - L| < \varepsilon/2$ (subsequence convergence). Then for any $n \geq N_1$,
+\[
+|a_n - L| \leq |a_n - a_{n_K}| + |a_{n_K} - L| < \varepsilon/2 + \varepsilon/2 = \varepsilon. \qedhere
+\]
+\end{proof}
+
+\subsection*{Code sketch}
+
+Numerically the partial sums $S_n = \sum_{k=1}^n 1/k^2$ approach $\pi^2/6$. We print $|S_n - \pi^2/6|$ and locate the smallest $N$ realizing each tolerance $\varepsilon \in \{10^{-2}, 10^{-4}, 10^{-6}\}$, contrast a Cauchy sequence ($1/n$) with a non-Cauchy one ($(-1)^n$), run a Newton iteration to $\sqrt{2}$, and watch a bounded monotone telescoping series converge to $1$.
+
+\subsection*{Connection to LLMs}
+
+Training a transformer is a sequence $(\theta_t)_{t \in \mathbb{N}}$ in $\mathbb{R}^d$ produced by an optimizer (SGD, Adam). Statements like ``the loss converges'' or ``the iterates converge to a stationary point'' are \emph{limit statements in the sense of Definition 2.2}. Convergence proofs for SGD (Chapter 13) and Adam (Chapter 14) reduce, ultimately, to bounded-monotone arguments on auxiliary scalar sequences (loss values, squared gradient norms) --- and those arguments would simply be false over $\mathbb{Q}$. Completeness is not philosophical decoration; it is the load-bearing axiom under every convergence theorem in deep learning.
 
 % --- CHAPTER 2 END ---
 
@@ -49,7 +229,139 @@
 \section*{Chapter 3: Continuity, univariate differentiation, chain rule}
 \addcontentsline{toc}{section}{Chapter 3: Continuity, univariate differentiation, chain rule}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter~2 built the language of limits ($\varepsilon$--$N$ for sequences and $\varepsilon$--$\delta$ for functions). \emph{Continuity} asserts that small input perturbations cause small output perturbations; \emph{differentiability} strengthens this to ``the perturbation is asymptotically linear.'' Both notions sit beneath every gradient that flows through a neural network. The chain rule, the central theorem of this chapter, is precisely the algebraic identity that backpropagation evaluates at scale (forward to Chapter~18).
+
+\subsection*{Definitions}
+
+\begin{definition}[$\varepsilon$--$\delta$ continuity at a point]
+Let $f:D\subseteq\mathbb{R}\to\mathbb{R}$ and $a\in D$. We say $f$ is \emph{continuous at $a$} iff
+\[
+\forall\,\varepsilon>0\;\exists\,\delta>0:\;|x-a|<\delta\text{ and }x\in D\;\Longrightarrow\;|f(x)-f(a)|<\varepsilon.
+\]
+$f$ is \emph{continuous on $S\subseteq D$} iff it is continuous at every $a\in S$.
+\end{definition}
+
+\begin{proposition}[Sequential characterization]\label{prop:seq}
+$f$ is continuous at $a$ iff for every sequence $x_n\to a$ in $D$ we have $f(x_n)\to f(a)$.
+\end{proposition}
+
+\begin{proof}
+$(\Rightarrow)$ Given $\varepsilon>0$, pick $\delta$ from continuity; since $x_n\to a$, eventually $|x_n-a|<\delta$, hence $|f(x_n)-f(a)|<\varepsilon$. $(\Leftarrow)$ Suppose $f$ is not continuous at $a$: some $\varepsilon_0>0$ admits no working $\delta$, so for each $n\in\mathbb{N}$ pick $x_n$ with $|x_n-a|<1/n$ but $|f(x_n)-f(a)|\ge\varepsilon_0$. Then $x_n\to a$ and yet $f(x_n)\not\to f(a)$, contradicting the hypothesis.
+\end{proof}
+
+\begin{definition}[Differentiability]
+For $a$ an interior point of $D$, $f$ is \emph{differentiable at $a$} iff
+\[
+f'(a)\;:=\;\lim_{h\to 0}\frac{f(a+h)-f(a)}{h}
+\]
+exists in $\mathbb{R}$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Differentiable $\Rightarrow$ continuous]\label{thm:diffcont}
+If $f$ is differentiable at $a$, then $f$ is continuous at $a$.
+\end{theorem}
+
+\begin{proof}
+For $h\ne 0$ we have the algebraic identity
+\[
+f(a+h)-f(a)=h\cdot\frac{f(a+h)-f(a)}{h}.
+\]
+By limit algebra (Chapter~2), the right-hand side tends to $0\cdot f'(a)=0$ as $h\to 0$. Hence $\lim_{h\to 0}f(a+h)=f(a)$, which is continuity at $a$.
+\end{proof}
+
+\begin{theorem}[Sum, product, quotient rules]\label{thm:rules}
+Let $f,g$ be differentiable at $a$. Then $f+g$, $fg$, and (provided $g(a)\ne 0$) $f/g$ are differentiable at $a$, with
+\[
+(f+g)'(a)=f'(a)+g'(a),\qquad (fg)'(a)=f'(a)g(a)+f(a)g'(a),
+\]
+\[
+\Bigl(\frac{f}{g}\Bigr)'(a)=\frac{f'(a)g(a)-f(a)g'(a)}{g(a)^2}.
+\]
+\end{theorem}
+
+\begin{proof}[Proof of the product rule]
+Use the add-and-subtract trick:
+\begin{align*}
+\frac{(fg)(a+h)-(fg)(a)}{h}
+&=\frac{f(a+h)g(a+h)-f(a)g(a+h)}{h}+\frac{f(a)g(a+h)-f(a)g(a)}{h}\\
+&=\frac{f(a+h)-f(a)}{h}\,g(a+h)\;+\;f(a)\,\frac{g(a+h)-g(a)}{h}.
+\end{align*}
+By Theorem~\ref{thm:diffcont}, $g(a+h)\to g(a)$ as $h\to 0$. The two difference quotients tend to $f'(a)$ and $g'(a)$ respectively. Limit algebra yields $f'(a)g(a)+f(a)g'(a)$. Sum and quotient rules are analogous (use the algebraic identity $\tfrac{1}{g(a+h)}-\tfrac{1}{g(a)}=-\tfrac{g(a+h)-g(a)}{g(a+h)g(a)}$ and continuity of $g$).
+\end{proof}
+
+\begin{theorem}[Chain rule, Carath\'eodory form]\label{thm:chain}
+Let $g$ be differentiable at $a$ and $f$ differentiable at $b:=g(a)$. Then $f\circ g$ is differentiable at $a$ and
+\[
+(f\circ g)'(a)=f'(g(a))\cdot g'(a).
+\]
+\end{theorem}
+
+\begin{proof}
+Define the \emph{Carath\'eodory function}
+\[
+\phi(y):=
+\begin{cases}
+\dfrac{f(y)-f(b)}{y-b}, & y\ne b,\\[2pt]
+f'(b), & y=b.
+\end{cases}
+\]
+By the definition of $f'(b)$, $\phi$ is continuous at $b$. For \emph{every} $y$ in a neighborhood of $b$,
+\[
+f(y)-f(b)=\phi(y)\,(y-b),\tag{$\star$}
+\]
+which holds at $y=b$ trivially and by construction otherwise --- a key advantage: no division by zero is ever required. Apply $(\star)$ with $y=g(x)$:
+\[
+\frac{f(g(x))-f(g(a))}{x-a}=\phi(g(x))\cdot\frac{g(x)-g(a)}{x-a}.
+\]
+As $x\to a$, $g(x)\to g(a)=b$ by Theorem~\ref{thm:diffcont}, and $\phi$ is continuous at $b$, so $\phi(g(x))\to\phi(b)=f'(b)$ by Proposition~\ref{prop:seq}. The second factor tends to $g'(a)$. Limit algebra closes the proof.
+\end{proof}
+
+\begin{remark}
+The Carath\'eodory device sidesteps the classical pitfall of the difference-quotient proof, where one must handle the case $g(x)=g(a)$ for $x$ arbitrarily close to $a$ (e.g.\ $g$ constant on a sequence). Here $\phi$ is defined everywhere, so the identity $(\star)$ requires no caveat.
+\end{remark}
+
+\begin{lemma}[Rolle]\label{lem:rolle}
+If $f$ is continuous on $[a,b]$, differentiable on $(a,b)$, and $f(a)=f(b)$, then there exists $c\in(a,b)$ with $f'(c)=0$.
+\end{lemma}
+
+\begin{proof}
+By the extreme value theorem (Chapter~4, via compactness of $[a,b]$), $f$ attains its maximum $M$ and minimum $m$ on $[a,b]$. If $M=m$ then $f$ is constant and any $c\in(a,b)$ works. Otherwise an extremum is attained at some interior $c\in(a,b)$; Fermat's interior-extremum lemma --- one-sided difference quotients have opposite signs at an interior extremum, so the two-sided limit $f'(c)$ must equal $0$ --- finishes the job.
+\end{proof}
+
+\begin{theorem}[Mean value theorem]\label{thm:mvt}
+If $f$ is continuous on $[a,b]$ and differentiable on $(a,b)$, then there exists $c\in(a,b)$ with
+\[
+f'(c)=\frac{f(b)-f(a)}{b-a}.
+\]
+\end{theorem}
+
+\begin{proof}
+Define the auxiliary function
+\[
+h(x):=f(x)-\frac{f(b)-f(a)}{b-a}(x-a).
+\]
+Then $h$ is continuous on $[a,b]$ (sum/product of continuous functions) and differentiable on $(a,b)$ with
+\[
+h'(x)=f'(x)-\frac{f(b)-f(a)}{b-a}.
+\]
+Direct computation gives $h(a)=f(a)$ and $h(b)=f(b)-(f(b)-f(a))=f(a)$, so $h(a)=h(b)$. By Lemma~\ref{lem:rolle} there exists $c\in(a,b)$ with $h'(c)=0$, i.e.\ $f'(c)=(f(b)-f(a))/(b-a)$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook (\texttt{cells.json}) (i)~certifies $\varepsilon$--$\delta$ continuity for $f(x)=x^2$ at $a=2$ by binary-search on $\delta$ for $\varepsilon\in\{10^{-1},10^{-2},10^{-3}\}$; (ii)~plots the $O(h)$ error of the forward-difference approximation to $\sin'$; (iii)~verifies the chain rule for $f(x)=\sin(x^2)$ at $x=1$ to $\sim 10^{-7}$; (iv)~finds an MVT witness $c\in(0,2)$ for $f(x)=x^3-2x$ by bisection.
+
+\subsection*{Connection to LLMs}
+
+A transformer is a composition $L_K\circ L_{K-1}\circ\cdots\circ L_1$ of differentiable layers. The gradient of the loss with respect to any parameter $\theta$ in layer $i$ is, by iterated application of Theorem~\ref{thm:chain},
+\[
+\frac{\partial \mathcal{L}}{\partial \theta}=\frac{\partial \mathcal{L}}{\partial L_K}\cdot\frac{\partial L_K}{\partial L_{K-1}}\cdots\frac{\partial L_{i+1}}{\partial L_i}\cdot\frac{\partial L_i}{\partial \theta}.
+\]
+\textbf{Backpropagation is precisely the right-to-left evaluation of this product} (Chapter~18). The MVT, in turn, underwrites convergence proofs for gradient descent (Chapter~14): it bounds $|f(x)-f(y)|\le\sup|f'|\cdot|x-y|$, the Lipschitz hypothesis under which descent provably decreases the loss. Without the chain rule, deep learning does not exist.
 
 % --- CHAPTER 3 END ---
 
@@ -57,7 +369,118 @@
 \section*{Chapter 4: Multivariate calculus: partials, gradients, Jacobians}
 \addcontentsline{toc}{section}{Chapter 4: Multivariate calculus: partials, gradients, Jacobians}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+A neural network is a function $F:\mathbb{R}^n\to\mathbb{R}^m$ built by composing many simple maps; training it requires the gradient of a scalar loss with respect to a high-dimensional parameter vector. Chapter~3 handled the one-dimensional theory: existence of $f'(a)$, the mean value theorem (MVT), and the single-variable chain rule through the Carath\'eodory factorization $f(x)-f(a)=\varphi(x)(x-a)$ with $\varphi$ continuous at $a$. We now lift these ideas to several variables. Two pitfalls: (i) the \emph{correct} notion of differentiability is \emph{not} ``all partials exist'' but the stronger Fr\'echet condition, and (ii) the chain rule becomes a matrix product---the operation iterated by backpropagation in Chapter~18.
+
+\subsection*{Definitions}
+
+Let $f:U\to\mathbb{R}^m$ with $U\subseteq\mathbb{R}^n$ open, $\mathbf{a}\in U$, and $\mathbf{e}_i$ the $i$-th standard basis vector.
+
+\begin{definition}[Partial derivative]
+$\dfrac{\partial f}{\partial x_i}(\mathbf{a}) := \lim_{h\to 0}\dfrac{f(\mathbf{a}+h\mathbf{e}_i)-f(\mathbf{a})}{h}$, when the limit exists.
+\end{definition}
+
+\begin{definition}[Directional derivative]
+For a unit vector $\mathbf{v}$, $D_\mathbf{v} f(\mathbf{a}):=\lim_{t\to 0}\dfrac{f(\mathbf{a}+t\mathbf{v})-f(\mathbf{a})}{t}$.
+\end{definition}
+
+\begin{definition}[Fr\'echet differentiability]
+$f$ is \emph{differentiable} at $\mathbf{a}$ if there exists a linear $L:\mathbb{R}^n\to\mathbb{R}^m$ with
+\[
+\lim_{\mathbf{h}\to\mathbf{0}}\frac{\|f(\mathbf{a}+\mathbf{h})-f(\mathbf{a})-L\mathbf{h}\|}{\|\mathbf{h}\|}=0,
+\]
+i.e.\ the remainder is $o(\|\mathbf{h}\|)$. The matrix of $L$ in the standard basis is the \emph{Jacobian} $J_f(\mathbf{a})\in\mathbb{R}^{m\times n}$. When $m=1$, the \emph{gradient} is $\nabla f(\mathbf{a}):=J_f(\mathbf{a})^\top$.
+\end{definition}
+
+\begin{remark}
+Differentiability is strictly stronger than existence of partials: $f(x,y)=xy/(x^2+y^2)$ (with $f(0,0)=0$) has both partials zero at the origin, yet $f$ is discontinuous there and so not Fr\'echet differentiable.
+\end{remark}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Differentiable implies partials exist; $L=J_f$]
+If $f$ is differentiable at $\mathbf{a}$ with derivative $L$, then $\partial f/\partial x_j(\mathbf{a})$ exists for every $j$ and equals the $j$-th column of the matrix of $L$.
+\end{theorem}
+
+\begin{proof}
+Take $\mathbf{h}=h\mathbf{e}_j$, $h\neq 0$. Differentiability yields
+\[
+f(\mathbf{a}+h\mathbf{e}_j)-f(\mathbf{a}) = h\,L\mathbf{e}_j + r(h),\qquad \|r(h)\|/|h|\to 0.
+\]
+Divide by $h$ and let $h\to 0$: the left side tends to $\partial f/\partial x_j(\mathbf{a})$ by Definition~1, the right side to $L\mathbf{e}_j$. Hence the partial exists and equals the $j$-th column of $L$.
+\end{proof}
+
+\begin{theorem}[Continuous partials imply differentiability]
+If all $\partial f/\partial x_j$ exist on a neighborhood of $\mathbf{a}$ and are continuous at $\mathbf{a}$, then $f$ is differentiable at $\mathbf{a}$.
+\end{theorem}
+
+\begin{proof}[Sketch]
+Reduce to scalar codomain componentwise. Telescope along axes:
+\[
+f(\mathbf{a}+\mathbf{h})-f(\mathbf{a}) = \sum_{j=1}^n\!\Big[f(\mathbf{a}+\mathbf{h}_{<j}+h_j\mathbf{e}_j)-f(\mathbf{a}+\mathbf{h}_{<j})\Big],\qquad \mathbf{h}_{<j}:=\!\!\sum_{i<j} h_i\mathbf{e}_i.
+\]
+The single-variable MVT (Chapter~3) applied to the $j$-th summand produces $\xi_j$ between $0$ and $h_j$ with
+\[
+f(\mathbf{a}+\mathbf{h}_{<j}+h_j\mathbf{e}_j)-f(\mathbf{a}+\mathbf{h}_{<j}) = h_j\,\partial_j f(\mathbf{a}+\mathbf{h}_{<j}+\xi_j\mathbf{e}_j).
+\]
+Subtract $\sum_j h_j\,\partial_j f(\mathbf{a})$. By continuity of each $\partial_j f$, the difference $|\partial_j f(\cdot)-\partial_j f(\mathbf{a})|\to 0$ as $\mathbf{h}\to\mathbf{0}$. Cauchy--Schwarz then bounds the remainder by $\|\mathbf{h}\|\cdot \varepsilon(\mathbf{h})$ with $\varepsilon\to 0$, i.e.\ $o(\|\mathbf{h}\|)$. (Spivak, \emph{Calculus on Manifolds}, Thm.~2-8.)
+\end{proof}
+
+\begin{theorem}[Multivariate chain rule]
+If $g:\mathbb{R}^k\to\mathbb{R}^n$ is differentiable at $\mathbf{a}$ and $f:\mathbb{R}^n\to\mathbb{R}^m$ is differentiable at $\mathbf{b}=g(\mathbf{a})$, then $f\circ g$ is differentiable at $\mathbf{a}$ with
+\[
+J_{f\circ g}(\mathbf{a}) = J_f(\mathbf{b})\,J_g(\mathbf{a}).
+\]
+\end{theorem}
+
+\begin{proof}
+Write the Carath\'eodory-style remainders
+\(
+\rho_g(\mathbf{h}) := g(\mathbf{a}+\mathbf{h})-g(\mathbf{a})-J_g(\mathbf{a})\mathbf{h}=o(\|\mathbf{h}\|),\)
+and \(\rho_f(\mathbf{k})=o(\|\mathbf{k}\|).\) Let $\mathbf{k}(\mathbf{h}):=g(\mathbf{a}+\mathbf{h})-g(\mathbf{a})$. Then
+\begin{align*}
+f(g(\mathbf{a}+\mathbf{h})) - f(g(\mathbf{a}))
+ &= J_f(\mathbf{b})\,\mathbf{k}(\mathbf{h}) + \rho_f(\mathbf{k}(\mathbf{h}))\\
+ &= J_f(\mathbf{b})J_g(\mathbf{a})\mathbf{h} + J_f(\mathbf{b})\rho_g(\mathbf{h}) + \rho_f(\mathbf{k}(\mathbf{h})).
+\end{align*}
+Bound: $\|J_f(\mathbf{b})\rho_g(\mathbf{h})\|\le \|J_f(\mathbf{b})\|_{\mathrm{op}}\cdot o(\|\mathbf{h}\|)=o(\|\mathbf{h}\|)$. For the last term, $\|\mathbf{k}(\mathbf{h})\|\le (\|J_g(\mathbf{a})\|_{\mathrm{op}}+1)\|\mathbf{h}\|$ for small $\|\mathbf{h}\|$, hence $\rho_f(\mathbf{k}(\mathbf{h}))=o(\|\mathbf{k}\|)=o(\|\mathbf{h}\|)$. The total remainder is $o(\|\mathbf{h}\|)$, so $f\circ g$ is differentiable with derivative $J_f(\mathbf{b})J_g(\mathbf{a})$.
+\end{proof}
+
+\begin{theorem}[Schwarz / Clairaut]
+If $f:U\to\mathbb{R}$ is $C^2$ on $U$ open and $\mathbf{a}\in U$, then for all $i,j$
+\[
+\frac{\partial^2 f}{\partial x_i\,\partial x_j}(\mathbf{a}) = \frac{\partial^2 f}{\partial x_j\,\partial x_i}(\mathbf{a}).
+\]
+\end{theorem}
+
+\begin{proof}
+Fix $i\neq j$ and restrict to the two-variable slice in coordinates $x_i,x_j$ (other coordinates frozen at the values of $\mathbf{a}$). Define the second difference
+\[
+\Delta(h,k) := f(\mathbf{a}+h\mathbf{e}_i+k\mathbf{e}_j) - f(\mathbf{a}+h\mathbf{e}_i) - f(\mathbf{a}+k\mathbf{e}_j) + f(\mathbf{a}).
+\]
+Let $\varphi(s):=f(\mathbf{a}+s\mathbf{e}_i+k\mathbf{e}_j)-f(\mathbf{a}+s\mathbf{e}_i)$, so $\Delta(h,k)=\varphi(h)-\varphi(0)$. By MVT in $s$: $\Delta=h\,\varphi'(\xi)$ for some $\xi\in(0,h)$, with
+\[
+\varphi'(\xi) = \partial_i f(\mathbf{a}+\xi\mathbf{e}_i+k\mathbf{e}_j) - \partial_i f(\mathbf{a}+\xi\mathbf{e}_i).
+\]
+Apply MVT again, this time in $k$: $\varphi'(\xi)=k\,\partial_j\partial_i f(\mathbf{a}+\xi\mathbf{e}_i+\eta\mathbf{e}_j)$ for some $\eta\in(0,k)$. Hence
+\[
+\Delta(h,k) = hk\,\partial_j\partial_i f(\mathbf{a}+\xi\mathbf{e}_i+\eta\mathbf{e}_j).
+\]
+By the symmetric argument starting with $\psi(t):=f(\mathbf{a}+h\mathbf{e}_i+t\mathbf{e}_j)-f(\mathbf{a}+t\mathbf{e}_j)$, $\Delta(h,k)=hk\,\partial_i\partial_j f(\mathbf{a}+\xi'\mathbf{e}_i+\eta'\mathbf{e}_j)$. Divide by $hk$ and let $(h,k)\to(0,0)$. Continuity of the second partials ($C^2$) makes both sides converge to $\partial_j\partial_i f(\mathbf{a})$ and $\partial_i\partial_j f(\mathbf{a})$ respectively, which are therefore equal.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The accompanying notebook verifies every theorem numerically: gradient of $f(x,y)=x^2y+\sin(x+y)$ via central differences; Jacobian of $\mathbf{f}(x,y,z)=(xyz,\,x^2+\sin y+e^z)$ column-by-column; chain rule on $f\circ g$ with $g(t)=(\cos t,\sin t),\ f(x,y)=x^2+y^2$ (composite identically $1$, so the chain-rule product must vanish); equality of mixed partials for $f(x,y)=x^3y^2+\sin(xy)$.
+
+\subsection*{Connection to LLMs}
+
+A transformer is a composition $F = F_L\circ\cdots\circ F_1$ of differentiable layers, scored by a scalar loss $\mathcal{L}=\ell\circ F$. Theorem~4.7 states
+\[
+\nabla_{\theta_\ell}\mathcal{L} = \big(J_\ell(F(x))\,J_{F_L}\cdots J_{F_{\ell+1}}\big)\,\frac{\partial F_\ell}{\partial \theta_\ell}.
+\]
+\textbf{Backpropagation never materializes any $J_{F_k}$.} It propagates the row vector $\mathbf{v}^\top := J_\ell\,J_{F_L}\cdots J_{F_{\ell+1}}$ right-to-left via \emph{vector--Jacobian products} (VJPs)---one per layer, each at $O(\text{forward cost})$. Reverse-mode autodiff is precisely Theorem~4.7 with associativity exploited; we derive the algorithm formally in Chapter~18.
 
 % --- CHAPTER 4 END ---
 
@@ -65,7 +488,97 @@
 \section*{Chapter 5: Linear algebra I: vector spaces, basis, linear maps}
 \addcontentsline{toc}{section}{Chapter 5: Linear algebra I: vector spaces, basis, linear maps}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Every transformer layer is, between its bias terms and nonlinearities, a \emph{linear map between finite-dimensional real vector spaces}. The ``hidden dimension'' $d$ is just $\dim \mathbb{R}^d$; a ``weight matrix'' $W \in \mathbb{R}^{m \times n}$ is the matrix representation of a linear map $\mathbb{R}^n \to \mathbb{R}^m$; ``residual connections'' are addition in a vector space; ``low-rank adapters'' are statements about the image of a linear map. Before attention (Chapter~21) or embeddings (Chapter~19), we need the grammar of vector spaces, bases, dimension, kernels, images, and the rank--nullity theorem. We use Chapter~1 (sets, functions, logic) throughout.
+
+\subsection*{Definitions}
+
+\begin{definition}[Field]
+A \emph{field} $\mathbb{F}$ is a set with operations $+,\,\cdot$ such that $(\mathbb{F},+)$ is an abelian group with identity $0$, $(\mathbb{F}\setminus\{0\},\cdot)$ is an abelian group with identity $1$, and multiplication distributes over addition. The canonical example is $\mathbb{F} = \mathbb{R}$.
+\end{definition}
+
+\begin{definition}[Vector space, eight axioms]
+A \emph{vector space} $V$ over $\mathbb{F}$ is a set with addition $+\colon V\times V\to V$ and scalar multiplication $\cdot\colon \mathbb{F}\times V\to V$ satisfying, for all $u,v,w\in V$ and $a,b\in\mathbb{F}$:
+\begin{enumerate}
+  \item $(u+v)+w = u+(v+w)$;
+  \item $u+v = v+u$;
+  \item $\exists\, 0 \in V$ with $v+0=v$ for all $v$;
+  \item $\forall v\,\exists (-v)$ with $v+(-v)=0$;
+  \item $a\cdot(u+v) = a\cdot u + a\cdot v$;
+  \item $(a+b)\cdot v = a\cdot v + b\cdot v$;
+  \item $(ab)\cdot v = a\cdot(b\cdot v)$;
+  \item $1\cdot v = v$.
+\end{enumerate}
+\end{definition}
+
+\begin{definition}[Subspace, span, independence, basis, dimension]
+A \emph{subspace} $U\subset V$ is a subset closed under $+$ and scalar multiplication that contains $0$. A \emph{linear combination} of $v_1,\dots,v_k$ is $\sum a_i v_i$ with $a_i\in\mathbb{F}$. The \emph{span} of $S\subset V$ is $\mathrm{span}(S) := \{\sum a_iv_i : v_i\in S, a_i\in\mathbb{F}\}$, the smallest subspace containing $S$. A finite set $\{v_1,\dots,v_k\}$ is \emph{linearly independent} iff $\sum a_i v_i = 0 \Rightarrow a_1=\cdots=a_k=0$. A \emph{basis} of $V$ is a linearly independent spanning set; the \emph{dimension} $\dim V$ is its cardinality (well-defined by Theorem~\ref{thm:dim} below).
+\end{definition}
+
+\begin{definition}[Linear map, kernel, image, matrix representation]
+A map $T\colon V\to W$ between vector spaces over the same $\mathbb{F}$ is \emph{linear} iff $T(au+bv) = aT(u)+bT(v)$. Define $\ker T := \{v\in V: Tv = 0\}$ and $\mathrm{im}\,T := \{Tv : v\in V\}$; both are subspaces. Given bases $(e_j)$ of $\mathbb{R}^n$ and $(f_i)$ of $\mathbb{R}^m$, the \emph{matrix representation} of $T$ is $A\in\mathbb{R}^{m\times n}$ with $T(e_j) = \sum_i A_{ij} f_i$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{lemma}[Steinitz exchange]\label{lem:steinitz}
+Let $V$ be a vector space over $\mathbb{F}$. If $\{v_1,\dots,v_m\}$ is linearly independent and $\{w_1,\dots,w_n\}$ spans $V$, then $m\le n$, and (after reindexing the $w_j$) we may replace $m$ of them by $v_1,\dots,v_m$ so that the resulting set still spans $V$.
+\end{lemma}
+
+\begin{proof}
+By induction on $m$. The case $m=0$ is trivial. Assume the claim for $m-1$: after reindexing, $\{v_1,\dots,v_{m-1},w_m,\dots,w_n\}$ spans $V$. In particular $m-1\le n$. Then
+\[
+v_m = \sum_{i<m} a_i v_i + \sum_{j\ge m} b_j w_j
+\]
+for some scalars. If all $b_j = 0$, then $v_m\in\mathrm{span}(v_1,\dots,v_{m-1})$, contradicting linear independence of $\{v_1,\dots,v_m\}$. Hence some $b_{j_0}\ne 0$ for $j_0\in\{m,\dots,n\}$, forcing $n\ge m$. Reindex so $j_0=m$ and solve:
+\[
+w_m = b_m^{-1}\!\Big(v_m - \sum_{i<m} a_i v_i - \sum_{j>m} b_j w_j\Big) \in \mathrm{span}(v_1,\dots,v_m,w_{m+1},\dots,w_n).
+\]
+Therefore $\mathrm{span}(v_1,\dots,v_m,w_{m+1},\dots,w_n)$ contains $\{v_1,\dots,v_{m-1},w_m,\dots,w_n\}$, which spans $V$, so the new set spans $V$.
+\end{proof}
+
+\begin{theorem}[Spanning sets contain bases; independent sets extend to bases]\label{thm:basis-ext}
+In a finite-dimensional $V$: (a) any finite spanning set contains a basis; (b) any linearly independent set extends to a basis.
+\end{theorem}
+
+\begin{proof}
+(a) If a spanning set $S$ is dependent, some $w\in S$ lies in $\mathrm{span}(S\setminus\{w\})$, so $S\setminus\{w\}$ still spans. Iterate; finiteness terminates the process at an independent spanning set.\\
+(b) Given an independent set $L$ and a finite spanning set $S$, apply Lemma~\ref{lem:steinitz} to replace $|L|$ of the $w$'s by $L$, producing a spanning set containing $L$. Then apply (a), removing only $S$-side elements.
+\end{proof}
+
+\begin{theorem}[Invariance of dimension]\label{thm:dim}
+Any two bases of a finite-dimensional $V$ have the same cardinality.
+\end{theorem}
+
+\begin{proof}
+Let $\mathcal{B}_1,\mathcal{B}_2$ be bases with $|\mathcal{B}_1|=m$, $|\mathcal{B}_2|=n$. Since $\mathcal{B}_1$ is independent and $\mathcal{B}_2$ spans, Lemma~\ref{lem:steinitz} gives $m\le n$. Swap roles: $n\le m$. Hence $m=n$.
+\end{proof}
+
+\begin{theorem}[Rank--nullity]\label{thm:ranknul}
+Let $T\colon V\to W$ be linear with $\dim V = n < \infty$. Then
+\[
+\dim \ker T + \dim \mathrm{im}\,T \;=\; n.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $(u_1,\dots,u_k)$ be a basis of $\ker T$. By Theorem~\ref{thm:basis-ext}(b), extend to a basis $(u_1,\dots,u_k,v_1,\dots,v_{n-k})$ of $V$. We claim $(Tv_1,\dots,Tv_{n-k})$ is a basis of $\mathrm{im}\,T$.
+
+\emph{Spanning.} Any $w\in\mathrm{im}\,T$ has $w = T(\sum a_i u_i + \sum b_j v_j) = \sum b_j Tv_j$ since $Tu_i = 0$.
+
+\emph{Independence.} If $\sum c_j Tv_j = 0$, then $T(\sum c_j v_j) = 0$, so $\sum c_j v_j \in \ker T = \mathrm{span}(u_i)$. Write $\sum c_j v_j = \sum d_i u_i$, i.e.\ $\sum c_j v_j - \sum d_i u_i = 0$. Independence of the full basis forces all $c_j = 0$.
+
+Hence $\dim \mathrm{im}\,T = n-k = n - \dim \ker T$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+We will (a) implement \texttt{is\_linearly\_independent} and \texttt{dim\_span} via \texttt{numpy.linalg.matrix\_rank}; (b) build a $4\times 6$ random integer matrix, compute rank and a basis of $\ker A$ via the right singular vectors of $A$ corresponding to zero singular values, verifying $Av = 0$; (c) verify the change-of-basis formula $Av = P(P^{-1}AP)(P^{-1}v)$ for a random invertible $P$; (d) confirm $\mathrm{rank}(A) + \dim\ker A = 6$.
+
+\subsection*{Connection to LLMs}
+
+A transformer with hidden dimension $d$ operates on the vector space $\mathbb{R}^d$. The query/key/value projections in attention and the up/down projections in the MLP are linear maps $\mathbb{R}^d\to\mathbb{R}^{d_k}$ or $\mathbb{R}^d\to\mathbb{R}^{d_{\mathrm{ff}}}$ (Chapter~21). The token embedding (Chapter~19) is a linear map $\mathbb{R}^{|\mathcal{V}|}\to\mathbb{R}^d$ applied to a one-hot input, i.e.\ a row lookup. The ``rank'' of an attention matrix and the ``intrinsic dimension'' of activations are claims about $\dim\mathrm{im}$. LoRA fine-tuning constrains weight updates to a low-dimensional subspace --- a direct use of $\dim\mathrm{im}\,T \le \min(m,n)$. Rank--nullity returns when we count free parameters and degrees of freedom.
 
 % --- CHAPTER 5 END ---
 
@@ -73,7 +586,120 @@
 \section*{Chapter 6: Linear algebra II: inner products, norms, eigenvalues, SVD}
 \addcontentsline{toc}{section}{Chapter 6: Linear algebra II: inner products, norms, eigenvalues, SVD}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter 5 built vector spaces and linear maps as raw algebraic objects. To do \emph{geometry} --- length, angle, orthogonality, best approximation --- we add a single piece of structure: an \emph{inner product}. From it we will derive the Cauchy--Schwarz inequality, the triangle inequality, the spectral theorem for symmetric matrices, the singular value decomposition (SVD), and the Eckart--Young low-rank approximation theorem. These are the load-bearing tools behind PCA, attention, and LoRA fine-tuning of LLMs.
+
+\subsection*{Definitions}
+
+\begin{definition}[Inner product]
+A function $\langle\cdot,\cdot\rangle:V\times V\to\mathbb{R}$ on a real vector space $V$ is an \emph{inner product} if for all $\mathbf{x},\mathbf{y},\mathbf{z}\in V$ and $a,b\in\mathbb{R}$:
+\begin{enumerate}
+  \item Symmetry: $\langle\mathbf{x},\mathbf{y}\rangle=\langle\mathbf{y},\mathbf{x}\rangle$.
+  \item Linearity in the first argument: $\langle a\mathbf{x}+b\mathbf{y},\mathbf{z}\rangle=a\langle\mathbf{x},\mathbf{z}\rangle+b\langle\mathbf{y},\mathbf{z}\rangle$.
+  \item Positive-definiteness: $\langle\mathbf{x},\mathbf{x}\rangle\ge 0$ with equality iff $\mathbf{x}=\mathbf{0}$.
+\end{enumerate}
+The canonical example on $\mathbb{R}^n$ is the dot product $\langle\mathbf{x},\mathbf{y}\rangle=\sum_i x_i y_i=\mathbf{x}^\top\mathbf{y}$.
+\end{definition}
+
+\begin{definition}[Induced norm]
+$\|\mathbf{x}\|:=\sqrt{\langle\mathbf{x},\mathbf{x}\rangle}$.
+\end{definition}
+
+\begin{definition}[Orthogonality]
+$\mathbf{x},\mathbf{y}$ are \emph{orthogonal} if $\langle\mathbf{x},\mathbf{y}\rangle=0$. A set $\{\mathbf{q}_i\}$ is \emph{orthonormal} if $\langle\mathbf{q}_i,\mathbf{q}_j\rangle=\delta_{ij}$. An \emph{orthonormal basis} is an orthonormal spanning set.
+\end{definition}
+
+\begin{definition}[Eigenvalue, eigenvector, characteristic polynomial]
+For $A\in\mathbb{R}^{n\times n}$, $(\lambda,\mathbf{v})$ with $\mathbf{v}\ne\mathbf{0}$ is an \emph{eigenpair} if $A\mathbf{v}=\lambda\mathbf{v}$. The \emph{characteristic polynomial} is $p_A(\lambda):=\det(A-\lambda I)$; its roots are the eigenvalues.
+\end{definition}
+
+\begin{definition}[Symmetric, positive (semi)definite]
+$A$ is \emph{symmetric} if $A^\top=A$; \emph{positive semidefinite} (PSD) if symmetric with $\mathbf{x}^\top A\mathbf{x}\ge 0$ for all $\mathbf{x}$; \emph{positive definite} if strict for $\mathbf{x}\ne\mathbf{0}$.
+\end{definition}
+
+\begin{definition}[Singular value decomposition]
+A \emph{singular value decomposition} of $A\in\mathbb{R}^{m\times n}$ is a factorization $A=U\Sigma V^\top$ where $U\in\mathbb{R}^{m\times m}$, $V\in\mathbb{R}^{n\times n}$ are orthogonal ($U^\top U=I$, $V^\top V=I$) and $\Sigma\in\mathbb{R}^{m\times n}$ is ``diagonal'' with nonnegative entries $\sigma_1\ge\sigma_2\ge\cdots\ge 0$.
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Cauchy--Schwarz]
+For all $\mathbf{x},\mathbf{y}\in V$, $|\langle\mathbf{x},\mathbf{y}\rangle|\le\|\mathbf{x}\|\,\|\mathbf{y}\|$.
+\end{theorem}
+\begin{proof}
+If $\mathbf{y}=\mathbf{0}$, both sides vanish. Otherwise, for every $t\in\mathbb{R}$,
+\[
+0\le\|\mathbf{x}-t\mathbf{y}\|^2=\langle\mathbf{x}-t\mathbf{y},\mathbf{x}-t\mathbf{y}\rangle=\|\mathbf{x}\|^2-2t\langle\mathbf{x},\mathbf{y}\rangle+t^2\|\mathbf{y}\|^2.
+\]
+This is a quadratic in $t$ that is nonnegative everywhere, so its discriminant satisfies
+\[
+(2\langle\mathbf{x},\mathbf{y}\rangle)^2-4\|\mathbf{x}\|^2\|\mathbf{y}\|^2\le 0,
+\]
+i.e.\ $\langle\mathbf{x},\mathbf{y}\rangle^2\le\|\mathbf{x}\|^2\|\mathbf{y}\|^2$. Taking square roots completes the proof.
+\end{proof}
+
+\begin{corollary}[Triangle inequality]
+$\|\mathbf{x}+\mathbf{y}\|\le\|\mathbf{x}\|+\|\mathbf{y}\|$.
+\end{corollary}
+\begin{proof}
+Expand and apply Cauchy--Schwarz:
+\[
+\|\mathbf{x}+\mathbf{y}\|^2=\|\mathbf{x}\|^2+2\langle\mathbf{x},\mathbf{y}\rangle+\|\mathbf{y}\|^2\le\|\mathbf{x}\|^2+2\|\mathbf{x}\|\|\mathbf{y}\|+\|\mathbf{y}\|^2=(\|\mathbf{x}\|+\|\mathbf{y}\|)^2.\qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Spectral theorem, real symmetric case]
+Every symmetric $A\in\mathbb{R}^{n\times n}$ admits a factorization $A=Q\Lambda Q^\top$ with $Q$ orthogonal and $\Lambda$ real diagonal.
+\end{theorem}
+\begin{proof}
+Induct on $n$. For $n=1$, trivial. Assume the result for $n-1$. The Rayleigh quotient $R(\mathbf{x})=\mathbf{x}^\top A\mathbf{x}$ is continuous on the unit sphere $S^{n-1}=\{\mathbf{x}:\|\mathbf{x}\|=1\}$, which is compact, so $R$ attains a maximum at some $\mathbf{v}_1\in S^{n-1}$ with value $\lambda_1$. By Lagrange multipliers (or by directly differentiating $R(\mathbf{v}_1+t\mathbf{w})$ along any tangent $\mathbf{w}\perp\mathbf{v}_1$ at $t=0$), $A\mathbf{v}_1=\lambda_1\mathbf{v}_1$. The eigenvalue is real because $\lambda_1=\mathbf{v}_1^\top A\mathbf{v}_1\in\mathbb{R}$ and $\mathbf{v}_1\in\mathbb{R}^n$. (Alternatively, if $A\mathbf{z}=\mu\mathbf{z}$ over $\mathbb{C}$ with $\mathbf{z}\ne\mathbf{0}$, then $\mu\,\overline{\mathbf{z}}^\top\mathbf{z}=\overline{\mathbf{z}}^\top A\mathbf{z}=(A\overline{\mathbf{z}})^\top\mathbf{z}=\overline{\mu}\,\overline{\mathbf{z}}^\top\mathbf{z}$ since $A$ is real symmetric, so $\mu=\overline{\mu}$.)
+
+Let $W=\{\mathbf{v}_1\}^{\perp}$, an $(n-1)$-dimensional subspace. For $\mathbf{w}\in W$,
+\[
+\langle A\mathbf{w},\mathbf{v}_1\rangle=\langle\mathbf{w},A\mathbf{v}_1\rangle=\lambda_1\langle\mathbf{w},\mathbf{v}_1\rangle=0,
+\]
+so $A$ maps $W\to W$. The restriction $A|_W$ is symmetric with respect to the inherited inner product. By induction there is an orthonormal eigenbasis $\mathbf{v}_2,\dots,\mathbf{v}_n$ of $W$ with eigenvalues $\lambda_2,\dots,\lambda_n$. Then $\mathbf{v}_1,\dots,\mathbf{v}_n$ is an orthonormal eigenbasis of $A$. Setting $Q=[\mathbf{v}_1\;\cdots\;\mathbf{v}_n]$ and $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_n)$ gives $A=Q\Lambda Q^\top$.
+\end{proof}
+
+\begin{theorem}[Existence of SVD]
+Every $A\in\mathbb{R}^{m\times n}$ admits an SVD $A=U\Sigma V^\top$.
+\end{theorem}
+\begin{proof}[Sketch]
+The matrix $A^\top A\in\mathbb{R}^{n\times n}$ is symmetric and PSD, since $\mathbf{x}^\top A^\top A\mathbf{x}=\|A\mathbf{x}\|^2\ge 0$. By the spectral theorem $A^\top A=V\Lambda V^\top$ with $V$ orthogonal and $\Lambda=\mathrm{diag}(\lambda_1,\dots,\lambda_n)$, $\lambda_i\ge 0$, sorted decreasingly. Set $\sigma_i:=\sqrt{\lambda_i}$. For each $i$ with $\sigma_i>0$ define $\mathbf{u}_i:=A\mathbf{v}_i/\sigma_i\in\mathbb{R}^m$; then
+\[
+\langle\mathbf{u}_i,\mathbf{u}_j\rangle=\frac{\mathbf{v}_i^\top A^\top A\mathbf{v}_j}{\sigma_i\sigma_j}=\frac{\lambda_j\delta_{ij}}{\sigma_i\sigma_j}=\delta_{ij},
+\]
+so the $\mathbf{u}_i$ are orthonormal in $\mathbb{R}^m$. Extend to an orthonormal basis to form $U$. By construction $A V=U\Sigma$, hence $A=U\Sigma V^\top$.
+\end{proof}
+
+\begin{theorem}[Eckart--Young]
+Let $A=U\Sigma V^\top$ have singular values $\sigma_1\ge\cdots\ge\sigma_r>0$. The truncated SVD $A_k:=\sum_{i=1}^{k}\sigma_i\mathbf{u}_i\mathbf{v}_i^\top$ minimises $\|A-B\|_F$ (and $\|A-B\|_2$) over rank-$k$ matrices $B$, with $\|A-A_k\|_F^2=\sum_{i>k}\sigma_i^2$.
+\end{theorem}
+\begin{proof}[Sketch]
+The Frobenius norm is unitarily invariant: $\|A-B\|_F=\|U^\top(A-B)V\|_F$. The problem reduces to: among rank-$k$ matrices $C\in\mathbb{R}^{m\times n}$, minimise
+\[
+\|\Sigma-C\|_F^2=\sum_i(\sigma_i-c_{ii})^2+\sum_{i\ne j}c_{ij}^2.
+\]
+Off-diagonal entries should be zero, and the diagonal of $C$ should equal $\sigma_i$ for $i\le k$ and $0$ for $i>k$ (matching the largest gaps), recovering $A_k$. The operator-norm version uses the Courant--Fischer minimax characterisation of singular values.
+\end{proof}
+
+\subsection*{Code Sketch}
+
+The accompanying notebook (\texttt{cells.json}) (i) verifies Cauchy--Schwarz on 50 random pairs in $\mathbb{R}^{10}$, (ii) computes a symmetric eigendecomposition via \texttt{numpy.linalg.eigh} and checks $A\mathbf{v}_i=\lambda_i\mathbf{v}_i$ plus orthonormality, (iii) computes an SVD via \texttt{numpy.linalg.svd} and reconstructs $A$, and (iv) shows that Frobenius errors of rank-1 and rank-2 approximations decrease monotonically, consistent with Eckart--Young.
+
+\subsection*{Connection to LLMs}
+
+Inner products and SVD are the geometric backbone of transformers.
+
+\begin{itemize}
+  \item \textbf{Attention} (Chapters~21--22). The score matrix $QK^\top$ is the matrix of pairwise inner products of query and key embeddings. Linear-attention and Performer-style methods exploit the empirical low-rank-ness of $QK^\top$, which by Eckart--Young is best captured by truncated SVD.
+  \item \textbf{PCA / interpretability.} SVD of an embedding matrix yields principal components; leading singular vectors expose semantic axes used in probing studies.
+  \item \textbf{LoRA fine-tuning.} The update $W_0+BA$ with $B\in\mathbb{R}^{m\times r}$, $A\in\mathbb{R}^{r\times n}$, $r\ll\min(m,n)$, is literally a rank-$r$ correction; Eckart--Young guarantees its optimality at that rank in Frobenius norm.
+  \item \textbf{Spectral norm regularisation.} Bounding $\sigma_1(W)$ controls Lipschitz constants and stabilises training.
+\end{itemize}
+
+Every later geometric statement in this book --- projections, least squares, gradient flow on weight matrices, contractive maps --- descends from the inequalities and decompositions proven in this chapter.
 
 % --- CHAPTER 6 END ---
 
@@ -81,7 +707,142 @@
 \section*{Chapter 7: Convexity and optimization; gradient descent convergence}
 \addcontentsline{toc}{section}{Chapter 7: Convexity and optimization; gradient descent convergence}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapters 3 and 4 built derivatives, the chain rule, and gradients; Chapter 6 equipped $\mathbb{R}^n$ with a norm and the Cauchy--Schwarz inequality. With those in hand we can finally ask the optimization question that drives every line of training code in this book: given $f : \mathbb{R}^n \to \mathbb{R}$, what does the iteration $x_{t+1} = x_t - \eta \nabla f(x_t)$ actually do, and when does it converge?
+
+The honest answer for a transformer's loss is ``we don't know'': it is non-convex, the iterates are stochastic (Chapter 13), and rigorous global convergence is open. But the \emph{convex} case admits complete proofs, and those proofs supply the only quantitative vocabulary we have for the non-convex one --- smoothness, condition number, descent, contraction. Phrases like ``smooth loss landscape,'' ``warmup,'' and ``$1/L$ step size'' trace directly back to the two theorems below.
+
+\subsection*{Definitions}
+
+\begin{definition}[Convex set]
+$C \subseteq \mathbb{R}^n$ is \emph{convex} iff for all $x, y \in C$ and $t \in [0,1]$, $tx + (1-t)y \in C$.
+\end{definition}
+
+\begin{definition}[Convex function]
+$f : \mathbb{R}^n \to \mathbb{R}$ is \emph{convex} iff
+\[
+f(tx + (1-t)y) \leq t f(x) + (1-t) f(y) \quad \forall x, y \in \mathbb{R}^n,\; t \in [0,1].
+\]
+When $f$ is differentiable this is equivalent to the \emph{first-order} characterization $f(y) \geq f(x) + \langle \nabla f(x), y - x \rangle$: every tangent hyperplane lies below the graph.
+\end{definition}
+
+\begin{definition}[$L$-smoothness]
+$f$ is \emph{$L$-smooth} iff $\nabla f$ is $L$-Lipschitz: $\|\nabla f(x) - \nabla f(y)\| \leq L \|x - y\|$ for all $x, y$, with the Euclidean norm of Chapter 6.
+\end{definition}
+
+\begin{definition}[$\mu$-strong convexity]
+$f$ is \emph{$\mu$-strongly convex} iff for all $x, y$,
+\[
+f(y) \geq f(x) + \langle \nabla f(x), y - x \rangle + \tfrac{\mu}{2} \|y - x\|^2.
+\]
+The ratio $\kappa = L / \mu \geq 1$ is the \emph{condition number}.
+\end{definition}
+
+\begin{definition}[Gradient descent]
+Fix $x_0 \in \mathbb{R}^n$, step size $\eta > 0$. The \emph{gradient descent} iterates are $x_{t+1} = x_t - \eta \nabla f(x_t)$ for $t = 0, 1, 2, \ldots$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{lemma}[Descent lemma]
+If $f$ is $L$-smooth, then for all $x, y \in \mathbb{R}^n$,
+\[
+f(y) \leq f(x) + \langle \nabla f(x), y - x \rangle + \tfrac{L}{2}\|y - x\|^2.
+\]
+\end{lemma}
+
+\begin{proof}
+Let $g(t) = f(x + t(y - x))$ on $[0,1]$. By the chain rule (Chapter 4), $g'(t) = \langle \nabla f(x + t(y-x)), y - x\rangle$, and the fundamental theorem of calculus gives
+\[
+f(y) - f(x) = g(1) - g(0) = \int_0^1 \langle \nabla f(x + t(y-x)),\, y - x \rangle \, dt.
+\]
+Subtract $\langle \nabla f(x), y - x \rangle$ from both sides:
+\[
+f(y) - f(x) - \langle \nabla f(x), y - x \rangle = \int_0^1 \langle \nabla f(x + t(y-x)) - \nabla f(x),\, y - x \rangle \, dt.
+\]
+By Cauchy--Schwarz (Chapter 6) and the Lipschitz hypothesis,
+\[
+\langle \nabla f(x + t(y-x)) - \nabla f(x),\, y - x \rangle \leq \|\nabla f(x + t(y-x)) - \nabla f(x)\|\,\|y - x\| \leq L t \|y - x\|^2.
+\]
+Integrating, $\int_0^1 L t \|y - x\|^2 \, dt = \tfrac{L}{2}\|y - x\|^2$.
+\end{proof}
+
+\begin{theorem}[GD on $L$-smooth convex]
+Let $f$ be convex and $L$-smooth with minimizer $x^*$ and minimum $f^* = f(x^*)$. Then gradient descent with $\eta = 1/L$ satisfies
+\[
+f(x_T) - f^* \;\leq\; \frac{L \|x_0 - x^*\|^2}{2T}, \qquad T \geq 1.
+\]
+\end{theorem}
+
+\begin{proof}
+Apply the descent lemma at $y = x_{t+1} = x_t - \tfrac{1}{L}\nabla f(x_t)$, $x = x_t$:
+\begin{equation}
+f(x_{t+1}) \leq f(x_t) - \tfrac{1}{2L}\|\nabla f(x_t)\|^2. \tag{$\star$}
+\end{equation}
+In particular $f(x_t)$ is non-increasing in $t$. Convexity at $x_t$ versus $x^*$ gives $f(x_t) - f^* \leq \langle \nabla f(x_t), x_t - x^*\rangle$. Expand the gradient step:
+\[
+\|x_{t+1} - x^*\|^2 = \|x_t - x^*\|^2 - \tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2,
+\]
+so
+\[
+\tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle = \|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2 + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2,
+\]
+hence
+\[
+f(x_t) - f^* \leq \tfrac{L}{2}\bigl(\|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2\bigr) + \tfrac{1}{2L}\|\nabla f(x_t)\|^2.
+\]
+Adding $(\star)$ rewritten as $\tfrac{1}{2L}\|\nabla f(x_t)\|^2 \leq f(x_t) - f(x_{t+1})$ to the right-hand side and rearranging,
+\[
+f(x_{t+1}) - f^* \leq \tfrac{L}{2}\bigl(\|x_t - x^*\|^2 - \|x_{t+1} - x^*\|^2\bigr).
+\]
+Telescope $t = 0, \ldots, T-1$:
+\[
+\sum_{t=0}^{T-1} \bigl(f(x_{t+1}) - f^*\bigr) \leq \tfrac{L}{2}\|x_0 - x^*\|^2.
+\]
+Since $f(x_t)$ is non-increasing, $T (f(x_T) - f^*) \leq \sum_{t=0}^{T-1}(f(x_{t+1}) - f^*)$, which yields the claim.
+\end{proof}
+
+\begin{theorem}[GD on $L$-smooth $\mu$-strongly convex]
+Let $f$ be $\mu$-strongly convex and $L$-smooth, with $\eta = 1/L$. Then
+\[
+\|x_t - x^*\|^2 \leq \bigl(1 - \mu/L\bigr)^t \|x_0 - x^*\|^2.
+\]
+\end{theorem}
+
+\begin{proof}
+Strong convexity at $x_t$ versus $x^*$ rearranges to
+\[
+\langle \nabla f(x_t), x_t - x^*\rangle \geq f(x_t) - f^* + \tfrac{\mu}{2}\|x_t - x^*\|^2,
+\]
+and from $(\star)$ in the previous proof, $\tfrac{1}{2L}\|\nabla f(x_t)\|^2 \leq f(x_t) - f(x_{t+1}) \leq f(x_t) - f^*$, i.e. $\tfrac{1}{L^2}\|\nabla f(x_t)\|^2 \leq \tfrac{2}{L}(f(x_t) - f^*)$. Substituting both into the gradient-step expansion,
+\begin{align*}
+\|x_{t+1} - x^*\|^2 &= \|x_t - x^*\|^2 - \tfrac{2}{L}\langle \nabla f(x_t), x_t - x^*\rangle + \tfrac{1}{L^2}\|\nabla f(x_t)\|^2 \\
+&\leq \|x_t - x^*\|^2 - \tfrac{2}{L}\bigl(f(x_t) - f^* + \tfrac{\mu}{2}\|x_t - x^*\|^2\bigr) + \tfrac{2}{L}\bigl(f(x_t) - f^*\bigr) \\
+&= \bigl(1 - \tfrac{\mu}{L}\bigr)\|x_t - x^*\|^2.
+\end{align*}
+Iterate.
+\end{proof}
+
+\begin{remark}
+The contraction factor $1 - 1/\kappa$ degrades as the condition number $\kappa = L/\mu$ grows: ill-conditioned problems converge slowly. The optimal step $\eta = 2/(L + \mu)$ improves the per-step factor to $((\kappa - 1)/(\kappa + 1))^2$, but does not change the $O(\kappa \log(1/\varepsilon))$ iteration complexity scaling.
+\end{remark}
+
+\subsection*{Code sketch}
+
+Instantiate $f(x, y) = (x-1)^2 + 2(y+1)^2$, a strongly convex quadratic with Hessian $\operatorname{diag}(2, 4)$, so $\mu = 2$, $L = 4$. Gradient descent with $\eta = 1/L$ contracts $\|x_t - x^*\|^2$ by factor $1 - \mu/L = 1/2$ per step. For a degenerate $f(x) = \|Ax - b\|^2$ with $A \in \mathbb{R}^{20 \times 10}$ ill-conditioned, the strong-convexity rate degrades to the convex $O(1/T)$, visible as slope $\approx -1$ on a log-log plot of $f(x_T) - f^*$ versus $T$. A side-by-side run with $\eta = 1/L$ and the optimal $\eta = 2/(L + \mu)$ confirms the sharper contraction predicted by the remark.
+
+\subsection*{Connection to LLMs}
+
+Transformer losses are spectacularly non-convex: permuting attention heads or flipping signs in a layernorm gives an equivalent minimum. None of the theorems above apply globally. They apply \emph{locally}, and they supply the operating intuitions that survive the jump.
+
+\begin{itemize}
+\item \textbf{Smooth loss landscape.} The descent lemma says $\eta < 2/L$ is sufficient for monotone decrease. Empirically estimating local $L$ via the Hessian's top eigenvalue is exactly what learning-rate range tests and gradient-norm clipping approximate.
+\item \textbf{Warmup and LR scheduling} (Chapter 27). Early in training the local $L$ is large (sharp minima nearby); a small $\eta$ avoids the quadratic blow-up term in the descent lemma. As the trajectory enters flatter regions, $L$ drops and $\eta$ can grow.
+\item \textbf{SGD and AdamW} (Chapters 13, 14). Stochastic gradients break the deterministic descent lemma; the convergence proofs replace $(\star)$ with an expectation inequality plus a variance term, but the algebraic skeleton --- descent lemma, telescoping, contraction --- is preserved.
+\end{itemize}
+
+The convex theory is a load-bearing analogy: the only place where the rates are honest, and the conceptual scaffold for every heuristic layered on top.
 
 % --- CHAPTER 7 END ---
 

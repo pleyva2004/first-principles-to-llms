@@ -1,0 +1,166 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 5 — Linear algebra I: vector spaces, basis, linear maps\n",
+      "\n",
+      "Every transformer layer is a linear map between finite-dimensional real vector spaces, framed by bias terms and nonlinearities. Before attention (Ch. 21) or embeddings (Ch. 19), we need vector spaces, bases, dimension, kernels, images, and the rank–nullity theorem.\n",
+      "\n",
+      "**Eight axioms of a vector space $V$ over a field $\\mathbb{F}$.** For $u, v, w \\in V$, $a, b \\in \\mathbb{F}$:\n",
+      "\n",
+      "1. $(u+v)+w = u+(v+w)$\n",
+      "2. $u+v = v+u$\n",
+      "3. $\\exists\\, 0 \\in V$ with $v+0=v$\n",
+      "4. $\\forall v\\,\\exists (-v)$ with $v+(-v)=0$\n",
+      "5. $a(u+v) = au + av$\n",
+      "6. $(a+b)v = av + bv$\n",
+      "7. $(ab)v = a(bv)$\n",
+      "8. $1\\cdot v = v$\n",
+      "\n",
+      "The canonical example is $V = \\mathbb{R}^d$ over $\\mathbb{F} = \\mathbb{R}$, which is exactly the embedding space used by language models with hidden dimension $d$."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "def is_linearly_independent(vectors):\n",
+      "    \"\"\"Vectors is a list/array of row vectors. Independent iff rank == count.\"\"\"\n",
+      "    M = np.asarray(vectors, dtype=float)\n",
+      "    return int(np.linalg.matrix_rank(M)) == M.shape[0]\n",
+      "\n",
+      "def dim_span(vectors):\n",
+      "    \"\"\"Dimension of the span of a list of vectors.\"\"\"\n",
+      "    M = np.asarray(vectors, dtype=float)\n",
+      "    return int(np.linalg.matrix_rank(M))\n",
+      "\n",
+      "S = [(1, 0, 0), (0, 1, 0), (1, 1, 0)]\n",
+      "print('vectors:', S)\n",
+      "print('linearly independent?', is_linearly_independent(S))\n",
+      "print('dim of span:', dim_span(S))\n",
+      "assert dim_span(S) == 2, 'expected 2 since (1,1,0) = (1,0,0) + (0,1,0)'"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Basis and dimension\n",
+      "\n",
+      "A **basis** of $V$ is a linearly independent spanning set. By the **Steinitz exchange lemma**, every basis of a finite-dimensional $V$ has the same cardinality, called $\\dim V$. Below we compute the rank of a $4 \\times 6$ matrix (the dimension of its column span / image) and extract a basis of its **null space** (kernel) via the right singular vectors of $A$ associated to zero singular values."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "A = np.random.randint(-3, 4, size=(4, 6)).astype(float)\n",
+      "print('A =\\n', A)\n",
+      "\n",
+      "U, sigma, Vt = np.linalg.svd(A)\n",
+      "print('singular values:', np.round(sigma, 4))\n",
+      "\n",
+      "# Numerical rank: count singular values above tolerance.\n",
+      "tol = max(A.shape) * np.finfo(float).eps * sigma.max()\n",
+      "rank = int((sigma > tol).sum())\n",
+      "print('rank(A) =', rank)\n",
+      "\n",
+      "# Right singular vectors (rows of Vt) corresponding to zero singular values\n",
+      "# span the null space. There are n - rank of them, where n = 6.\n",
+      "n = A.shape[1]\n",
+      "null_basis = Vt[rank:]  # shape (n - rank, n)\n",
+      "print('dim ker(A) =', null_basis.shape[0])\n",
+      "\n",
+      "# Verify A @ v == 0 for each null-space basis vector v.\n",
+      "for i, v in enumerate(null_basis):\n",
+      "    Av = A @ v\n",
+      "    print(f'A v_{i} norm = {np.linalg.norm(Av):.2e}')\n",
+      "    assert np.allclose(Av, 0, atol=1e-10)"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Linear maps and matrix representation\n",
+      "\n",
+      "A linear map $T: V \\to W$ satisfies $T(au+bv) = aTu + bTv$. In bases $(e_j)$ of $V = \\mathbb{R}^n$ and $(f_i)$ of $W = \\mathbb{R}^m$, the matrix $A \\in \\mathbb{R}^{m\\times n}$ has $j$-th column equal to the coordinates of $T(e_j)$. If we change basis on $V = W = \\mathbb{R}^n$ via an invertible $P$, the same map $T$ is represented in the new basis by $\\tilde{A} = P^{-1} A P$. Numerically: for any $v \\in \\mathbb{R}^n$ we should have $A v = P\\,\\tilde{A}\\,P^{-1} v$."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "A = np.random.randn(3, 3)\n",
+      "# Build a random invertible P. Re-draw if singular (essentially never happens).\n",
+      "while True:\n",
+      "    P = np.random.randn(3, 3)\n",
+      "    if abs(np.linalg.det(P)) > 1e-6:\n",
+      "        break\n",
+      "P_inv = np.linalg.inv(P)\n",
+      "A_tilde = P_inv @ A @ P\n",
+      "\n",
+      "v = np.random.randn(3)\n",
+      "lhs = A @ v\n",
+      "rhs = P @ A_tilde @ P_inv @ v\n",
+      "print('A v       =', lhs)\n",
+      "print('P A~ Pi v =', rhs)\n",
+      "print('max abs diff:', np.max(np.abs(lhs - rhs)))\n",
+      "assert np.allclose(lhs, rhs)"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Rank–nullity\n",
+      "\n",
+      "**Theorem.** For $T: V \\to W$ with $\\dim V < \\infty$, $\\dim \\ker T + \\dim \\mathrm{im}\\,T = \\dim V$. Equivalently, for $A \\in \\mathbb{R}^{m\\times n}$, $\\mathrm{rank}(A) + \\dim \\ker(A) = n$. We verify this for the $4 \\times 6$ matrix above (so the sum should equal $6$)."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "A = np.random.randint(-3, 4, size=(4, 6)).astype(float)\n",
+      "U, sigma, Vt = np.linalg.svd(A)\n",
+      "tol = max(A.shape) * np.finfo(float).eps * sigma.max()\n",
+      "rank = int((sigma > tol).sum())\n",
+      "nullity = A.shape[1] - rank  # by definition of SVD null-space basis\n",
+      "print(f'rank(A)    = {rank}')\n",
+      "print(f'nullity(A) = {nullity}')\n",
+      "print(f'sum        = {rank + nullity}')\n",
+      "print(f'n (cols)   = {A.shape[1]}')\n",
+      "assert rank + nullity == A.shape[1], 'rank-nullity violated'"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Connection to LLMs\n",
+      "\n",
+      "A transformer with hidden dimension $d$ operates in $\\mathbb{R}^d$. The query/key/value projections in attention (Ch. 21) are linear maps $\\mathbb{R}^d \\to \\mathbb{R}^{d_k}$. Token embeddings (Ch. 19) are a linear map $\\mathbb{R}^{|\\mathcal{V}|} \\to \\mathbb{R}^d$ applied to a one-hot input. LoRA constrains weight *updates* to a low-rank subspace, an explicit application of $\\dim \\mathrm{im}\\,T \\le \\min(m, n)$. Rank–nullity will reappear whenever we count free parameters or degrees of freedom."
+    ]
+  }
+]
