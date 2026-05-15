@@ -2761,7 +2761,113 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 22: Multi-head attention: parallel heads as concat-then-project; complexity}
 \addcontentsline{toc}{section}{Chapter 22: Multi-head attention: parallel heads as concat-then-project; complexity}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter~21 built a single attention head: a $T \times T$ soft-lookup linking every output position to every input position in $O(1)$ depth. A single head must compress \emph{every} relational pattern --- syntactic, semantic, positional --- into one softmax-weighted average over $V$. The Vaswani et al.~(2017) fix is \textbf{multi-head attention} (MHA): run $H$ heads in parallel on disjoint low-rank subspaces, concatenate, and re-project. We will prove that (i) MHA equals a single attention with block-diagonal projections, (ii) the parameter count is independent of $H$, and (iii) compute scales as $\Theta(T d^2 + T^2 d)$, with the $T^2 d$ term motivating the inference-time variants \textbf{multi-query} (MQA) and \textbf{grouped-query} (GQA) attention used by PaLM and Llama 2/3.
+
+\subsection*{Definitions}
+
+Let $X \in \mathbb{R}^{T \times d}$ with $d := d_{\mathrm{model}}$. Fix $H \mid d$ and set $d_k = d_v = d/H$. Write $\mathrm{Attn}(\cdot,\cdot,\cdot)$ for scaled dot-product attention (Chapter~21).
+
+\begin{definition}[Multi-head attention]
+\label{def:mha}
+For $h = 1, \dots, H$, fix
+\[
+W_Q^{(h)}, W_K^{(h)} \in \mathbb{R}^{d \times d_k}, \qquad W_V^{(h)} \in \mathbb{R}^{d \times d_v}, \qquad W_O \in \mathbb{R}^{H d_v \times d}.
+\]
+Define
+\[
+\mathrm{head}_h \;=\; \mathrm{Attn}\bigl(X W_Q^{(h)},\, X W_K^{(h)},\, X W_V^{(h)}\bigr) \;\in\; \mathbb{R}^{T \times d_v},
+\]
+\[
+\boxed{\;\mathrm{MHA}(X) \;=\; \mathrm{Concat}(\mathrm{head}_1,\dots,\mathrm{head}_H)\, W_O \;\in\; \mathbb{R}^{T \times d}.\;}
+\]
+\end{definition}
+
+\begin{definition}[Multi-query attention]
+All $H$ heads share a single $W_K, W_V$; only $W_Q^{(h)}$ varies per head. Hence the cached $K,V$ tensors are $H$ times smaller.
+\end{definition}
+
+\begin{definition}[Grouped-query attention]
+Partition the $H$ heads into $G$ groups, $G \mid H$. Heads within a group share $W_K, W_V$. MHA = $G = H$, MQA = $G = 1$. Llama 2/3 use $G \in \{4, 8\}$.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[MHA = block-structured single attention]
+\label{thm:block}
+Let $W_Q^{\mathrm{blk}} := [W_Q^{(1)} \mid \cdots \mid W_Q^{(H)}] \in \mathbb{R}^{d \times H d_k}$ be the horizontal concatenation of the per-head $Q$-projections, and similarly $W_K^{\mathrm{blk}}, W_V^{\mathrm{blk}}$. Set
+\[
+Q^{\mathrm{blk}} = X W_Q^{\mathrm{blk}}, \quad K^{\mathrm{blk}} = X W_K^{\mathrm{blk}}, \quad V^{\mathrm{blk}} = X W_V^{\mathrm{blk}} \;\in\; \mathbb{R}^{T \times H d_k}.
+\]
+Reshape each into $\mathbb{R}^{T \times H \times d_k}$ by splitting the last axis into $H$ blocks of width $d_k$. Then the per-head attention applied to slice $h$ of these reshaped tensors equals $\mathrm{head}_h$.
+\end{theorem}
+\begin{proof}
+By construction
+\[
+X W_Q^{\mathrm{blk}} \;=\; X \bigl[W_Q^{(1)} \mid \cdots \mid W_Q^{(H)}\bigr] \;=\; \bigl[X W_Q^{(1)} \mid \cdots \mid X W_Q^{(H)}\bigr],
+\]
+so the $h$-th block of width $d_k$ is exactly $X W_Q^{(h)} = Q^{(h)}$. The same holds for $K$ and $V$. The reshape is a memory-layout no-op: slice $h$ of $Q^{\mathrm{blk}} \in \mathbb{R}^{T \times H \times d_k}$ is $Q^{(h)}$. Since $\mathrm{Attn}$ is computed independently per head and uses only that head's $(Q^{(h)}, K^{(h)}, V^{(h)})$, the outputs match.
+\end{proof}
+
+\begin{remark}
+The score matrix is \emph{not} a single $HT \times HT$ block-diagonal matmul: the softmax is taken per head, with no cross-head mixing until $W_O$. The block picture says only that the linear projections factor cleanly; the nonlinearity preserves head independence.
+\end{remark}
+
+\begin{theorem}[Parameter count is independent of $H$]
+\label{thm:params}
+The total parameter count of MHA's $W_Q^{(\cdot)}, W_K^{(\cdot)}, W_V^{(\cdot)}, W_O$ is exactly $4 d^2$.
+\end{theorem}
+\begin{proof}
+Each per-head projection is $d \times d_k = d \times d/H$, with $d^2/H$ parameters. Three projections per head and $H$ heads yield
+\[
+3 H \cdot \frac{d^2}{H} \;=\; 3 d^2.
+\]
+The output projection $W_O$ is $H d_v \times d = d \times d$, contributing $d^2$. Total: $4 d^2$. The $1/H$ shrinkage of each head exactly cancels the $H$-fold replication.
+\end{proof}
+
+\begin{theorem}[Compute complexity]
+\label{thm:compute}
+For input $X \in \mathbb{R}^{T \times d}$,
+\[
+\boxed{\;\mathrm{cost}(\mathrm{MHA}) \;=\; \Theta(T d^2 + T^2 d).\;}
+\]
+\end{theorem}
+\begin{proof}
+We sum FLOPs across the five steps.
+\begin{enumerate}
+  \item \emph{Q, K, V projections.} By Theorem~\ref{thm:block} we may treat them as three $T \times d$ by $d \times d$ matmuls: $\Theta(T d^2)$ in total.
+  \item \emph{Score $Q^{(h)} K^{(h)\top}$ per head.} Each is $(T \times d_k)(d_k \times T) = \Theta(T^2 d_k)$. Summed across $H$ heads: $H \cdot \Theta(T^2 d_k) = \Theta(T^2 d)$ since $H d_k = d$.
+  \item \emph{Softmax.} $\Theta(T^2)$ per head, $\Theta(H T^2)$ total --- subdominant.
+  \item \emph{Output $A V$.} Per head $(T \times T)(T \times d_v) = \Theta(T^2 d_v)$, total $\Theta(T^2 d)$.
+  \item \emph{$W_O$.} $T \times (H d_v) \cdot (H d_v \times d) = \Theta(T d^2)$.
+\end{enumerate}
+Adding: $\Theta(T d^2) + \Theta(T^2 d) + \Theta(H T^2) + \Theta(T^2 d) + \Theta(T d^2) = \Theta(T d^2 + T^2 d)$.
+\end{proof}
+
+\begin{corollary}[Long-context regime]
+When $T \gg d$, the $T^2 d$ term dominates. Doubling the sequence quadruples attention FLOPs but only doubles projection FLOPs. This is the structural reason transformer inference becomes attention-bound at long context lengths and motivates the efficient-attention literature of Chapter~27.
+\end{corollary}
+
+\begin{theorem}[KV-cache memory]
+\label{thm:kvcache}
+Autoregressive decoding caches $K, V$ for all past tokens. Per layer, MHA stores $2 T d$ scalars; GQA with $G$ groups stores $2 T d \cdot G/H$; MQA stores $2 T d / H$.
+\end{theorem}
+\begin{proof}
+Each head needs $K \in \mathbb{R}^{T \times d_k}$, $V \in \mathbb{R}^{T \times d_v}$, totalling $2 T d_k$ scalars. MHA replicates this $H$ times (one per head), giving $2 T H d_k = 2 T d$. GQA replicates $G$ times, MQA once. Multiplying through gives the stated counts.
+\end{proof}
+
+\begin{example}
+A $70$\,B-parameter model with $d = 8192$, $H = 64$ at $T = 8192$ stores $2 \cdot 8192 \cdot 8192 \approx 1.34 \times 10^{8}$ scalars per layer for MHA, but only $\approx 1.7 \times 10^{7}$ for GQA with $G = 8$ --- an $8\times$ inference-memory reduction at small quality cost.
+\end{example}
+
+\subsection*{Code sketch}
+
+\texttt{cells.json} implements MHA in numpy with $T = 8, d = 12, H = 3$, verifies Theorem~\ref{thm:block} numerically (max-abs-diff between per-head loop and block-projected reshape is at machine precision), times the forward pass for $T \in \{32, 64, 128, 256\}$ exhibiting the $T^2$ kink, and tabulates KV-cache sizes for MHA vs.\ GQA ($G = 2$) vs.\ MQA.
+
+\subsection*{Connection to LLMs}
+
+GPT-2 and GPT-3 use vanilla MHA. PaLM~(2022) deploys MQA following Shazeer~(2019), motivated by inference throughput. Llama~2 (2023) introduces GQA as a quality/memory compromise; Llama~3, Mistral, and most open-weights successors retain it. The contemporary picture: train MHA-shaped compute, deploy GQA to fit the KV cache in HBM. Chapter~23 stacks these blocks into a transformer layer; Chapter~27 attacks the $T^2 d$ term proven above (FlashAttention, sliding-window, linear attention).
 
 % --- CHAPTER 22 END ---
 
@@ -2769,7 +2875,121 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 23: Transformer block: residual + LayerNorm/RMSNorm + FFN + attention; gradient-flow argument}
 \addcontentsline{toc}{section}{Chapter 23: Transformer block: residual + LayerNorm/RMSNorm + FFN + attention; gradient-flow argument}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+A single attention head (Chapter~22) is a beautiful linear-algebraic object, but a transformer is not one head: it is a stack of dozens to hundreds of nearly identical \emph{blocks}. Two empirical facts dominate the design of those blocks. First, deep stacks of pure compositions $f_L \circ \cdots \circ f_1$ suffer vanishing or exploding Jacobians (we proved a strict version of this for RNNs in Chapter~20). Second, the activations between layers drift in scale and mean unless we actively re-normalize. The transformer block solves both problems by wrapping every learned sublayer in a residual connection and a normalization layer, then alternating an attention sublayer with a position-wise feedforward MLP. This chapter pins down the algebra and proves the gradient-flow guarantee that makes deep transformer stacks trainable end-to-end.
+
+\subsection*{Definitions}
+
+\begin{definition}[Residual connection]
+Given a map $F : \mathbb{R}^d \to \mathbb{R}^d$, the \emph{residual} (or \emph{skip}) wrapper is $\mathrm{Res}_F(x) = F(x) + x$.
+\end{definition}
+
+\begin{definition}[LayerNorm; Ba--Kiros--Hinton 2016]
+For $x \in \mathbb{R}^d$ let $\mu = \tfrac1d \sum_i x_i$ and $\sigma^2 = \tfrac1d \sum_i (x_i - \mu)^2$. Then
+\[
+  \mathrm{LN}(x) \;=\; \gamma \odot \frac{x - \mu \mathbf{1}}{\sqrt{\sigma^2 + \varepsilon}} + \beta,
+  \qquad \gamma, \beta \in \mathbb{R}^d.
+\]
+\end{definition}
+
+\begin{definition}[RMSNorm; Zhang--Sennrich 2019]
+With $r(x)^2 = \tfrac1d \sum_i x_i^2$,
+\[
+  \mathrm{RMSN}(x) \;=\; \gamma \odot \frac{x}{\sqrt{r(x)^2 + \varepsilon}}.
+\]
+RMSN drops mean-subtraction and the $\beta$ shift, saving roughly $7\%$ of the per-token FLOPs of LN.
+\end{definition}
+
+\begin{definition}[Position-wise FFN]
+Two affine maps separated by a pointwise nonlinearity $\sigma$ (Chapter~16):
+\[
+  \mathrm{FFN}(x) \;=\; W_2 \,\sigma(W_1 x + b_1) + b_2,
+  \qquad W_1 \in \mathbb{R}^{d_{\mathrm{ff}} \times d}, \;\; W_2 \in \mathbb{R}^{d \times d_{\mathrm{ff}}},
+\]
+typically $d_{\mathrm{ff}} = 4d$. This is exactly the one-hidden-layer MLP of Chapter~15, applied independently to each token position.
+\end{definition}
+
+\begin{definition}[Pre-norm transformer block]
+Given multi-head self-attention $\mathrm{MHA}$ (Chapter~22) and FFN as above, the modern block (GPT-2 onward) is
+\[
+  z = x + \mathrm{MHA}\bigl(\mathrm{LN}(x)\bigr),
+  \qquad
+  y = z + \mathrm{FFN}\bigl(\mathrm{LN}(z)\bigr).
+\]
+The original Vaswani 2017 \emph{post-norm} block applied LN \emph{after} the residual sum: $z = \mathrm{LN}(x + \mathrm{MHA}(x))$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Residual gradient identity]
+\label{thm:res}
+Let $y = F(x) + x$ with $F : \mathbb{R}^d \to \mathbb{R}^d$ differentiable. Then $\partial y / \partial x = J_F(x) + I$. Iterating across $L$ residual blocks $x_{\ell+1} = x_\ell + F^{(\ell)}(x_\ell)$,
+\[
+  \frac{\partial x_L}{\partial x_0} \;=\; \prod_{\ell = L-1}^{0} \bigl(I + J_{F^{(\ell)}}(x_\ell)\bigr).
+\]
+\end{theorem}
+
+\begin{proof}
+Direct from the chain rule (Chapter~18): $\partial x_{\ell+1}/\partial x_\ell = I + J_{F^{(\ell)}}(x_\ell)$, and Jacobians compose by left-multiplication.
+\end{proof}
+
+\begin{corollary}[Non-vanishing gradient flow]
+Suppose $\|J_{F^{(\ell)}}\|_2 \le \kappa < 1$ uniformly. Without residuals, $\|\prod_\ell J_{F^{(\ell)}}\|_2 \le \kappa^L$, the exponential decay of Chapter~20's RNN bound. With residuals, expanding the product
+\[
+  \frac{\partial x_L}{\partial x_0} \;=\; I + \sum_\ell J_{F^{(\ell)}} + \sum_{\ell < m} J_{F^{(m)}} J_{F^{(\ell)}} + \cdots
+\]
+gives $\|\partial x_L/\partial x_0\|_2 \ge 1 - L\kappa - \binom{L}{2}\kappa^2 - \cdots$, bounded away from zero for any depth provided $\kappa$ is small enough. The identity term \emph{guarantees} a non-vanishing path from output to input.
+\end{corollary}
+
+\begin{theorem}[LN invariances and Jacobian]
+\label{thm:ln}
+Set $\gamma = \mathbf 1$, $\beta = 0$, $\varepsilon = 0$ to isolate the normalizer. For any $\alpha > 0$ and $\beta_0 \in \mathbb{R}$, $\mathrm{LN}(\alpha x + \beta_0 \mathbf{1}) = \mathrm{LN}(x)$.
+\end{theorem}
+
+\begin{proof}
+Let $x' = \alpha x + \beta_0 \mathbf{1}$. Then $\mu' = \alpha \mu + \beta_0$ and $\sigma'^2 = \tfrac1d \sum_i (\alpha x_i + \beta_0 - \alpha \mu - \beta_0)^2 = \alpha^2 \sigma^2$. Hence
+\[
+  \frac{x' - \mu' \mathbf{1}}{\sigma'} \;=\; \frac{\alpha (x - \mu \mathbf{1})}{\alpha \sigma} \;=\; \frac{x - \mu \mathbf{1}}{\sigma}. \qedhere
+\]
+\end{proof}
+
+Writing $\hat x = (x - \mu \mathbf{1})/\sigma$, $\partial \mu/\partial x_j = 1/d$, and $\partial \sigma / \partial x_j = (x_j - \mu)/(d \sigma) = \hat x_j / d$, the chain rule yields
+\[
+  \boxed{\;\frac{\partial \hat x_i}{\partial x_j} \;=\; \frac{1}{\sigma}\!\left(\delta_{ij} - \frac{1}{d} - \frac{1}{d}\hat x_i \hat x_j\right)\;}
+\]
+The two subtracted terms project out the constant ($\mathbf 1$) and $\hat x$ directions --- exactly the directions LN is invariant to. The Jacobian is therefore rank $d - 2$, with kernel $\mathrm{span}\{\mathbf{1}, x - \mu \mathbf{1}\}$.
+
+\begin{proposition}[RMSN $\approx$ LN on centered data]
+If $\mu(x) = 0$ then $\mathrm{LN}(x) = \mathrm{RMSN}(x)$ (the LN $\beta$ is absorbed into a downstream bias). For arbitrary $x$,
+\[
+  \mathrm{RMSN}(x) - \mathrm{LN}(x) \;=\; \gamma \odot \frac{\mu(x)\,\mathbf 1}{\sqrt{r(x)^2 + \varepsilon}} + O\!\left(\frac{\mu(x)^2}{r(x)^2}\right).
+\]
+\end{proposition}
+
+\begin{proof}
+When $\mu = 0$, $r(x)^2 = \sigma(x)^2$ and $x - \mu \mathbf{1} = x$, so the two formulas coincide. The general expansion follows by writing $r^2 = \sigma^2 + \mu^2$ and Taylor-expanding the inverse square root.
+\end{proof}
+
+The empirical observation behind RMSN, verified in our code cells, is that after a few transformer layers the residual stream has near-zero mean, so dropping centering costs essentially no quality.
+
+\begin{remark}[Pre-norm vs.\ post-norm gradient scale]
+With He/Xavier initialization (Chapter~17), each sublayer output has the same variance as its input. In a \emph{post-norm} stack the residual sum $x + F(x)$ has variance $2\,\mathrm{Var}(x)$, which LN immediately rescales to $\mathrm{Var}(x)$, but the gradient picks up a factor of $1/\sqrt 2$ per block, so after $L$ blocks the gradient at the input scales like $2^{-L/2}$, requiring careful warmup. In a \emph{pre-norm} stack the residual stream itself is never rescaled; only the input \emph{to} each sublayer is normalized. The end-to-end Jacobian is Theorem~\ref{thm:res}'s $\prod(I + J_F)$ with each $J_F$ acting on a normalized input, so the gradient norm at $x_0$ remains $\Theta(1)$ independent of $L$. This is why every model from GPT-2 onward uses pre-norm.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The companion notebook (i) implements one full pre-norm block in numpy and verifies shape preservation; (ii) stacks 20 residual blocks against 20 plain blocks and measures backpropagated gradient norms by finite differences; (iii) checks LN invariance under $x \mapsto \alpha x + \beta_0 \mathbf{1}$ across many random $(\alpha, \beta_0)$; (iv) compares LN vs.\ RMSN on centered and uncentered inputs.
+
+\subsection*{Connection to LLMs}
+
+Every layer of every modern decoder LLM is a small variation of the block above. GPT-2/3/4 use pre-LN with GELU FFN. Llama, Mistral, and Qwen swap LN for RMSN, GELU for SwiGLU (Chapter~16), and MHA for grouped-query attention (Chapter~24); Llama also uses RoPE positional encoding (Chapter~25) inside the attention sublayer. The block remains
+\[
+  z = x + \mathrm{Sublayer}_1(\mathrm{Norm}(x)),
+  \qquad
+  y = z + \mathrm{Sublayer}_2(\mathrm{Norm}(z)).
+\]
+Stacking 32--120 such blocks, plus the embedding (Chapter~21), the (often tied) unembedding, and a final norm before the LM head, gives the entire forward pass of a frontier-scale language model. The training-stability argument of Theorem~\ref{thm:res} is precisely what makes the trillion-parameter regime (Chapters~27, 28) reachable at all.
 
 % --- CHAPTER 23 END ---
 
@@ -2777,7 +2997,118 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 24: Positional encoding: sinusoidal derivation, RoPE construction}
 \addcontentsline{toc}{section}{Chapter 24: Positional encoding: sinusoidal derivation, RoPE construction}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+In Chapter~21 we proved that scaled dot-product attention is \emph{permutation-equivariant}: for any permutation matrix $P$ and sequence $X \in \mathbb{R}^{T \times d}$,
+\[
+\mathrm{Attention}(PX, PX, PX) \;=\; P \cdot \mathrm{Attention}(X, X, X).
+\]
+A direct corollary is catastrophic for language modeling: shuffling the tokens of a sentence and feeding them to attention produces the same set of output vectors, only re-indexed. Attention by itself sees a \emph{bag} of tokens, not a sequence. To recover order, we must inject the position $t \in \{0, 1, \ldots, T-1\}$ into the representations.
+
+Three approaches dominate practice: \textbf{sinusoidal} positional encodings (Vaswani et al.\ 2017), \textbf{learned} positional embeddings (BERT, GPT-2), and \textbf{rotary position embedding} or \textbf{RoPE} (Su et al.\ 2021), used by Llama, Mistral, Claude, Gemini, and most modern LLMs. We derive all three and prove the central RoPE relative-position theorem.
+
+\subsection*{Definitions}
+
+\begin{definition}[Sinusoidal positional encoding]
+For position $\mathrm{pos} \in \mathbb{N}$ and even embedding dimension $d$, define $\mathrm{PE}(\mathrm{pos}) \in \mathbb{R}^d$ by
+\[
+\mathrm{PE}(\mathrm{pos}, 2i) = \sin(\mathrm{pos}\cdot \theta_i), \qquad
+\mathrm{PE}(\mathrm{pos}, 2i+1) = \cos(\mathrm{pos}\cdot \theta_i),
+\]
+with frequencies $\theta_i := 10000^{-2i/d}$ for $i = 0, \ldots, d/2 - 1$. The position-aware token representation is $x_t = E[\mathrm{token}_t] + \mathrm{PE}(t)$.
+\end{definition}
+
+\begin{definition}[Learned positional embedding]
+Fix $T_{\max}$. Let $P \in \mathbb{R}^{T_{\max} \times d}$ be a parameter matrix. The position embedding at $t$ is the row $P_t$, learned end-to-end with the rest of the model.
+\end{definition}
+
+\begin{definition}[Rotary position embedding (RoPE)]
+Group the $d$ coordinates of a query or key vector into $d/2$ consecutive pairs. For pair $i$ at position $\mathrm{pos}$, set
+\[
+R_{\mathrm{pos}, i} \;=\; \begin{pmatrix} \cos(\mathrm{pos}\,\theta_i) & -\sin(\mathrm{pos}\,\theta_i) \\ \sin(\mathrm{pos}\,\theta_i) & \cos(\mathrm{pos}\,\theta_i) \end{pmatrix},
+\qquad \theta_i = 10000^{-2i/d}.
+\]
+Let $R_{\mathrm{pos}} \in \mathbb{R}^{d \times d}$ be the block-diagonal matrix with these rotations on the diagonal. RoPE acts on the projected queries and keys multiplicatively:
+\[
+q_m^{\mathrm{rot}} = R_m\, q_m, \qquad k_n^{\mathrm{rot}} = R_n\, k_n.
+\]
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Sinusoidal PE encodes shift as rotation]
+\label{thm:sinusoidal-shift}
+For every offset $k \in \mathbb{Z}$ there exists a fixed block-diagonal matrix $M_k \in \mathbb{R}^{d \times d}$, independent of $\mathrm{pos}$, such that
+\[
+\mathrm{PE}(\mathrm{pos} + k) \;=\; M_k \cdot \mathrm{PE}(\mathrm{pos}).
+\]
+\end{theorem}
+
+\begin{proof}
+Restrict to the $i$-th coordinate pair. By the trigonometric addition formulas,
+\begin{align*}
+\sin\big((\mathrm{pos}+k)\theta_i\big) &= \sin(\mathrm{pos}\,\theta_i)\cos(k\theta_i) + \cos(\mathrm{pos}\,\theta_i)\sin(k\theta_i), \\
+\cos\big((\mathrm{pos}+k)\theta_i\big) &= \cos(\mathrm{pos}\,\theta_i)\cos(k\theta_i) - \sin(\mathrm{pos}\,\theta_i)\sin(k\theta_i).
+\end{align*}
+With $c := \cos(k\theta_i)$, $s := \sin(k\theta_i)$, the pair transforms as
+\[
+\begin{pmatrix} \sin((\mathrm{pos}+k)\theta_i) \\ \cos((\mathrm{pos}+k)\theta_i) \end{pmatrix}
+= \begin{pmatrix} c & s \\ -s & c \end{pmatrix}
+\begin{pmatrix} \sin(\mathrm{pos}\,\theta_i) \\ \cos(\mathrm{pos}\,\theta_i) \end{pmatrix}.
+\]
+The $2\times 2$ matrix depends only on $k$ and $\theta_i$, not on $\mathrm{pos}$. Stacking these blocks for $i = 0, \ldots, d/2 - 1$ yields the claimed $M_k$.
+\end{proof}
+
+\begin{theorem}[RoPE relative-position property]
+\label{thm:rope-relative}
+For all $m, n \in \mathbb{N}$ and all $q_m, k_n \in \mathbb{R}^d$,
+\[
+\big\langle R_m\, q_m,\ R_n\, k_n \big\rangle \;=\; q_m^{\top}\, R_{n - m}\, k_n.
+\]
+\end{theorem}
+
+\begin{proof}
+Each $R_{\mathrm{pos}, i}$ is a planar rotation, hence
+\[
+R_{\mathrm{pos}, i}^{\top} = R_{-\mathrm{pos}, i}, \qquad R_{a, i}\, R_{b, i} = R_{a + b, i},
+\]
+the latter being the angle-addition identity for $\mathrm{SO}(2)$. Lifting to block-diagonal matrices preserves both: $R_m^{\top} = R_{-m}$ and $R_a R_b = R_{a+b}$. Therefore
+\[
+\langle R_m q_m,\, R_n k_n \rangle
+= q_m^{\top} R_m^{\top} R_n k_n
+= q_m^{\top} R_{-m} R_n k_n
+= q_m^{\top} R_{n - m} k_n. \qedhere
+\]
+\end{proof}
+
+\begin{corollary}[Translation invariance]
+\label{cor:translation-invariance}
+For any $c \in \mathbb{Z}$, $\langle R_{m+c} q_m,\, R_{n+c} k_n \rangle = \langle R_m q_m,\, R_n k_n \rangle$.
+\end{corollary}
+
+\begin{proof}
+By Theorem~\ref{thm:rope-relative}, the left-hand side equals $q_m^{\top} R_{(n+c)-(m+c)} k_n = q_m^{\top} R_{n-m} k_n$, which equals the right-hand side, again by Theorem~\ref{thm:rope-relative}.
+\end{proof}
+
+\begin{proposition}[RoPE has no learnable parameters]
+The map $(q, k, \mathrm{pos}) \mapsto (R_{\mathrm{pos}} q,\, R_{\mathrm{pos}} k)$ contains no trainable weights: the frequencies $\theta_i = 10000^{-2i/d}$ are fixed and $R_{\mathrm{pos}}$ is defined for every integer $\mathrm{pos}$.
+\end{proposition}
+
+\begin{proof}
+By inspection of the definition.
+\end{proof}
+
+\begin{remark}
+A model trained with context length $T_{\mathrm{train}}$ can in principle be evaluated at $\mathrm{pos} > T_{\mathrm{train}}$ since $R_{\mathrm{pos}}$ is defined for all integers. Learned positional embeddings cannot: there is no row $P_t$ for $t \geq T_{\max}$. RoPE thus offers a principled (if imperfect) path to length extrapolation, refined by NTK-aware scaling, YaRN, and Position Interpolation in Chapter~27.
+\end{remark}
+
+\subsection*{Code Sketch}
+
+The accompanying notebook (i) confirms permutation-invariance of vanilla attention numerically, (ii) implements and visualizes the sinusoidal PE matrix, (iii) verifies Theorem~\ref{thm:sinusoidal-shift} by checking $\|\mathrm{PE}(\mathrm{pos}+k) - M_k \mathrm{PE}(\mathrm{pos})\| < 10^{-12}$, (iv) implements RoPE for $d=8$, $T=6$ and confirms Theorem~\ref{thm:rope-relative} by comparing $\langle R_m q_m, R_n k_n \rangle$ against $q_m^{\top} R_{n-m} k_n$, and (v) verifies Corollary~\ref{cor:translation-invariance} by shifting all positions by $c \in \{1, 5, 10\}$ and confirming the attention score matrix is unchanged.
+
+\subsection*{Connection to LLMs}
+
+Vaswani et al.'s original Transformer used sinusoidal PEs. BERT and GPT-2 switched to learned PEs, trading off extrapolation for marginal accuracy gains within the training context. From Llama (2023) onward, RoPE is the de facto standard: Theorem~\ref{thm:rope-relative} states that attention scores depend only on token \emph{separation}, matching the linguistic intuition that ``the dog \emph{across the street}'' should attend the same way regardless of where the phrase appears in the document. Combined with extrapolation techniques (Chapter~27), RoPE has enabled context windows from $2$K (Llama~1) to $1$M+ tokens (Claude, Gemini). Chapter~23 introduced multi-head attention; positional encoding is applied per-head before the dot product, so RoPE composes cleanly with multi-head splitting and with everything that follows.
 
 % --- CHAPTER 24 END ---
 
@@ -2789,7 +3120,97 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 25: Causal masking; next-token prediction loss as MLE on the empirical distribution}
 \addcontentsline{toc}{section}{Chapter 25: Causal masking; next-token prediction loss as MLE on the empirical distribution}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+We have a transformer block that mixes information across positions (Ch.~23) and a positional encoding that injects order (Ch.~24). To turn this into a \emph{language model} we must decide (i) what the network outputs, (ii) what loss to minimize, and (iii) how to reconcile parallel training with the constraint that the model never see future tokens. All three are settled by one design choice: \emph{causal masking + next-token prediction} (NTP).
+
+\subsection*{Definitions}
+
+\begin{definition}[Causal language model]
+A causal (decoder-only) language model with parameters $\theta$ assigns to a sequence $x_{1:T} = (x_1,\ldots,x_T) \in \mathcal{V}^T$ the joint
+\[
+  p_\theta(x_{1:T}) \;=\; \prod_{t=1}^{T} p_\theta\!\big(x_t \,\big|\, x_{<t}\big), \qquad x_{<t} := (x_1,\ldots,x_{t-1}).
+\]
+Each conditional $p_\theta(\cdot\mid x_{<t})$ is a softmax over $\mathcal{V}$ produced by a transformer applied to the prefix.
+\end{definition}
+
+\begin{definition}[Causal attention mask]
+For $T\in\mathbb{N}$, the causal mask is the matrix $M\in\{0,-\infty\}^{T\times T}$ with
+\[
+  M_{ij} = \begin{cases} 0, & j \le i,\\ -\infty, & j > i.\end{cases}
+\]
+Causal scaled dot-product attention replaces the score matrix $S = QK^\top/\sqrt{d_k}$ by $S+M$ before the row-wise softmax. Because $\exp(-\infty)=0$, row $i$ of the softmax has zero mass on every column $j>i$.
+\end{definition}
+
+\begin{definition}[Teacher forcing]
+At training, the input to predict $x_t$ is the ground-truth prefix $x_{<t}$, not the model's own previous predictions. Combined with the causal mask, this lets all $T$ predictions be computed in one parallel forward pass on $x_{1:T}$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Chain-rule factorization]\label{thm:chain}
+For any joint distribution $p$ on $\mathcal{V}^T$, $p(x_{1:T}) = \prod_{t=1}^T p(x_t \mid x_{<t})$.
+\end{theorem}
+\begin{proof}
+Iterate the conditional-probability identity (Ch.~8) $p(A,B) = p(A)\,p(B\mid A)$:
+$p(x_{1:T}) = p(x_1)\,p(x_2\mid x_1)\,p(x_3\mid x_{1:2})\cdots p(x_T\mid x_{<T})$.
+\end{proof}
+
+This identity holds for \emph{every} joint distribution; the modeling choice is to parameterize each conditional with a transformer. Causal masking is precisely what enforces this factorization at the level of the architecture.
+
+\begin{theorem}[NTP loss = empirical NLL = cross-entropy with $\hat p_{\mathcal{D}}$]\label{thm:ntp}
+Let $\mathcal{D} = \{x^{(n)}_{1:T_n}\}_{n=1}^{N}$ be a corpus of i.i.d.\ documents drawn from $p^\star$. Define
+\[
+  \mathcal{L}(\theta) \;=\; -\sum_{n=1}^{N}\sum_{t=1}^{T_n} \log p_\theta\!\left(x^{(n)}_t \mid x^{(n)}_{<t}\right).
+\]
+Then $\arg\min_\theta \mathcal{L}(\theta) = \arg\min_\theta H\!\big(\hat p_{\mathcal{D}},\, p_\theta\big)$, where $\hat p_{\mathcal{D}}$ is the empirical distribution and $H$ is cross-entropy.
+\end{theorem}
+\begin{proof}
+By Theorem~\ref{thm:chain}, $\log p_\theta(x_{1:T_n}^{(n)}) = \sum_t \log p_\theta(x_t^{(n)}\mid x_{<t}^{(n)})$, hence $\mathcal{L}(\theta) = -\sum_n \log p_\theta(x^{(n)})$. The empirical distribution $\hat p_{\mathcal{D}}(x) = \frac{1}{N}\sum_n \mathbb{1}[x = x^{(n)}]$ gives
+\[
+  H(\hat p_{\mathcal{D}}, p_\theta) = -\!\!\sum_{x\in\mathcal{V}^*}\hat p_{\mathcal{D}}(x)\log p_\theta(x) = -\frac{1}{N}\sum_n \log p_\theta(x^{(n)}) = \frac{1}{N}\,\mathcal{L}(\theta).
+\]
+Multiplying by $N>0$ does not change the argmin. By Ch.~12, this is exactly the MLE.
+\end{proof}
+
+\begin{corollary}[Consistency]
+If $\{p_\theta\}$ is correctly specified ($p^\star = p_{\theta^\star}$ for some $\theta^\star$) and identifiable, then the minimizer $\hat\theta_N$ converges to $\theta^\star$ as $N\to\infty$.
+\end{corollary}
+\begin{proof}[Sketch]
+By the law of large numbers, $\frac{1}{N}\mathcal{L}(\theta) \to -\mathbb{E}_{p^\star}\!\left[\log p_\theta(X)\right] = H(p^\star, p_\theta)$. Gibbs' inequality (Ch.~12) gives $H(p^\star, p_\theta)\ge H(p^\star)$ with equality iff $p_\theta = p^\star$. Identifiability + uniform convergence promote pointwise convergence of the minimizer to $\theta^\star$.
+\end{proof}
+
+\begin{theorem}[Causal mask preserves backprop locality]\label{thm:locality}
+With the causal mask, for every $(t,s)$ with $s>t$ and every input embedding $h^{(0)}_s$,
+\[
+  \frac{\partial \mathcal{L}_t}{\partial h^{(0)}_s} \;=\; 0,\qquad \mathcal{L}_t = -\log p_\theta(x_t\mid x_{<t}).
+\]
+\end{theorem}
+\begin{proof}
+By induction on layer depth $\ell$. At $\ell=0$, position-$i$ embedding depends only on $h^{(0)}_i$. Assume each layer's output $y^{(\ell)}_i$ depends only on $\{h^{(0)}_j\}_{j\le i}$. The next masked-attention output is
+$y^{(\ell+1)}_i = \sum_{j\le i} \alpha^{(\ell+1)}_{ij} V^{(\ell+1)}_j$ because $\alpha^{(\ell+1)}_{ij} = 0$ for $j>i$ (mask). Each $V^{(\ell+1)}_j$ is a linear function of $y^{(\ell)}_j$, which by hypothesis depends only on $\{h^{(0)}_k\}_{k\le j} \subseteq \{h^{(0)}_k\}_{k\le i}$. Pointwise sublayers (residuals, MLP, LayerNorm) act per-position. Hence $y^{(\ell+1)}_i$ depends only on $\{h^{(0)}_k\}_{k\le i}$. Setting $i=t$ at the final layer and applying the chain rule, $\partial \mathcal{L}_t/\partial h^{(0)}_s = 0$ for $s>t$.
+\end{proof}
+
+\begin{remark}[Why parallel training is sound]
+Theorem~\ref{thm:locality} implies that the gradient of $\mathcal{L} = \sum_t \mathcal{L}_t$ obtained from one forward pass on $x_{1:T}$ equals the sum of the $T$ gradients we would obtain from $T$ separate forward passes on the prefixes $x_{1:t}$. Causal masking thus turns $T$ sequential supervision signals into one parallel forward/backward pass --- the central engineering reason transformers train so much faster than RNNs.
+\end{remark}
+
+\begin{proposition}[Train vs.\ inference]
+Training (teacher forcing): one forward pass on $x_{1:T}$ in time $\Theta(T^2 d)$ produces all $T$ logits and the cumulative loss.
+Inference (autoregressive): given prompt $x_{1:k}$, sample $\hat x_{k+1}\sim p_\theta(\cdot\mid x_{1:k})$, append, repeat for $T-k$ steps. The asymmetry is intrinsic: at train time $x_{t+1}$ is known, at inference time it is whatever the model just produced.
+\end{proposition}
+
+\begin{definition}[Perplexity]
+$\mathrm{PPL}(x_{1:T}) := \exp\!\Big(\frac{1}{T}\sum_{t=1}^T -\log p_\theta(x_t\mid x_{<t})\Big) = \big(\prod_t p_\theta(x_t\mid x_{<t})\big)^{-1/T}$. Lower is better; a uniform model on $|\mathcal{V}|$ tokens achieves $\mathrm{PPL} = |\mathcal{V}|$.
+\end{definition}
+
+\subsection*{Code sketch}
+
+The accompanying notebook builds (i) an $8\times 8$ causal mask, (ii) a single-head causal attention layer that verifies row $t$ has zero weight on $j>t$, (iii) a tiny logits ``model'' confirming NTP loss equals summed cross-entropy with one-hot targets, (iv) a perturbation experiment in which changing the token at position $T$ leaves the logit at position $T-1$ unchanged --- an empirical witness of Theorem~\ref{thm:locality} --- and (v) perplexity comparisons between a uniform model and a trained tiny model.
+
+\subsection*{Connection to LLMs}
+
+Every modern decoder-only LLM --- GPT-1/2/3/4, Llama, Claude, Gemini --- is a causal language model trained with exactly the objective derived here. Pre-training scales the corpus $\mathcal{D}$ to trillions of tokens and the parameter count $|\theta|$ to hundreds of billions (Ch.~27 onward), but the objective never changes: minimize $-\sum_t \log p_\theta(x_t\mid x_{<t})$ on the empirical distribution, with the causal mask of Definition~2 making all $T$ per-token losses backprop-independent. Perplexity (or its log, the per-token NLL in nats/bits) remains the canonical metric on held-out text. The next chapters lift the architecture from this single-document loss to data-parallel optimization, scaling laws, and post-training (instruction tuning, RLHF).
 
 % --- CHAPTER 25 END ---
 
@@ -2797,7 +3218,116 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 26: Tokenization: BPE algorithm; greedy merge correctness}
 \addcontentsline{toc}{section}{Chapter 26: Tokenization: BPE algorithm; greedy merge correctness}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+A language model assigns probabilities over sequences drawn from a \emph{finite} token vocabulary $\mathcal{V}$. Recall from Chapter~1 that $\mathcal{V}$ is a finite set; the embedding matrix of Chapter~19 has exactly one row per element of $\mathcal{V}$. Two extremes for choosing $\mathcal{V}$ are unsatisfactory:
+
+\begin{itemize}
+\item \textbf{Word-level vocabulary.} Treat each whitespace-delimited string as a token. Then $\mathcal{V}$ must grow without bound to cover proper nouns, typos, code identifiers, URLs, and morphological variants, and any unseen word is mapped to a single \texttt{<unk>} symbol. The OOV problem is unbounded.
+\item \textbf{Character-level vocabulary.} Take $\mathcal{V}$ to be the 256 raw bytes. Then $|\mathcal{V}|$ is small and OOV is impossible, but sequences become extremely long, and the quadratic cost of self-attention (Chapter~25) bites hard.
+\end{itemize}
+
+\textbf{Subword tokenization} is the middle ground: $\mathcal{V}$ is a learned set of byte strings where common substrings (\texttt{the}, \texttt{ing}, \texttt{\_function}) are atomic tokens and rare strings fall back to bytes. We study the dominant algorithm: \textbf{byte-pair encoding} (BPE), introduced as a compression heuristic by Gage (1994) and adapted to neural machine translation by Sennrich, Haddow \& Birch (2016).
+
+\subsection*{Definitions}
+
+Fix a finite base alphabet $\Sigma$; for byte-level BPE, $\Sigma = \{0, 1, \dots, 255\}$. A \emph{corpus} is a finite multiset $\mathcal{C} \subset \Sigma^*$ of strings, with multiplicity $c(s) \in \mathbb{Z}_{>0}$.
+
+\begin{definition}[Vocabulary and segmentation]
+A \emph{vocabulary} is a finite set $\mathcal{V} \subset \Sigma^+$ with $\Sigma \subseteq \mathcal{V}$. A \emph{segmentation} of $s \in \Sigma^*$ under $\mathcal{V}$ is a tuple $(t_1, \dots, t_k) \in \mathcal{V}^k$ with $t_1 t_2 \cdots t_k = s$ (concatenation).
+\end{definition}
+
+\begin{definition}[Merge rule]
+A \emph{merge rule} is an ordered pair $(a, b) \in \mathcal{V} \times \mathcal{V}$. Applying it to a sequence $(t_1, \dots, t_k)$ replaces every adjacent occurrence of $(a, b)$ with the single token $ab$, scanning left to right and non-overlappingly.
+\end{definition}
+
+\begin{definition}[BPE training]
+Given $\mathcal{C}$ and a budget $M \in \mathbb{Z}_{\geq 0}$:
+\begin{enumerate}
+\item Initialize $\mathcal{V}_0 = \Sigma$ and segment each $s \in \mathcal{C}$ as the sequence of its bytes.
+\item For $m = 1, \dots, M$, count adjacent pair frequencies
+\[
+f_m(a,b) \;=\; \sum_{s \in \mathcal{C}} c(s) \cdot \#\{\text{occurrences of }(a,b)\text{ in }\mathrm{seg}_{m-1}(s)\}.
+\]
+Pick $(a^\star, b^\star) = \arg\max_{(a,b)} f_m(a,b)$ (ties broken by a fixed total order on $\mathcal{V}^2$). Set $\mathcal{V}_m = \mathcal{V}_{m-1} \cup \{a^\star b^\star\}$ and apply the rule everywhere in the corpus.
+\end{enumerate}
+The output is the pair $(\mathcal{V}_M,\, (r_1, \dots, r_M))$ with $r_m = (a^\star, b^\star)$.
+\end{definition}
+
+\begin{definition}[BPE encoding/decoding]
+Given $(r_1, \dots, r_M)$, encode $s \in \Sigma^*$ by: start from the byte sequence of $s$; repeatedly apply the smallest-rank applicable merge $r_i$; halt when no rule applies. Decoding is concatenation: $\mathrm{dec}(t_1, \dots, t_k) = t_1 t_2 \cdots t_k$.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Determinism of BPE]
+Given a fixed merge list $(r_1, \dots, r_M)$ and a fixed tie-breaking rule, the encoder is a total function $\mathrm{enc}: \Sigma^* \to \mathcal{V}^*$.
+\end{theorem}
+
+\begin{proof}
+Each merge replaces two adjacent tokens by one, strictly reducing sequence length by~1. Sequence length is a well-founded measure into $\mathbb{N}$; the inner loop therefore terminates after at most $|s|-1$ steps. At each step the smallest-rank applicable rule is unique (rules are an ordered list with fixed tie-breaking), so the choice is deterministic. \qedhere
+\end{proof}
+
+\begin{theorem}[Decoding inverts encoding]
+For all $s \in \Sigma^*$, $\;\mathrm{dec}(\mathrm{enc}(s)) = s$.
+\end{theorem}
+
+\begin{proof}
+By induction on the merge sequence: every $t \in \mathcal{V}_m$ is a string in $\Sigma^+$, and a merge replaces $(a,b)$ by $ab$ — i.e.\ concatenation. Hence the concatenation $t_1 \cdots t_k$ is invariant under any sequence of merges starting from the byte sequence of $s$. \qedhere
+\end{proof}
+
+\begin{theorem}[Corpus-coverage monotonicity]
+Let
+\[
+L_m \;=\; \sum_{s \in \mathcal{C}} c(s) \cdot |\mathrm{seg}_m(s)|
+\]
+be the total token count of the corpus after $m$ training merges. Then $L_0 \geq L_1 \geq \cdots \geq L_M$, and $L_{m+1} < L_m$ whenever the chosen pair $r_{m+1}$ has positive frequency.
+\end{theorem}
+
+\begin{proof}
+Applying the merge $r_{m+1} = (a^\star, b^\star)$ replaces each non-overlapping occurrence of the adjacent pair with a single token, decreasing the length of each affected segmentation by exactly the number of occurrences. Summing over the corpus,
+\[
+L_{m+1} \;=\; L_m - f_{m+1}(a^\star, b^\star).
+\]
+Since $f_{m+1} \geq 0$, $L_{m+1} \leq L_m$, with strict decrease iff $f_{m+1}(a^\star, b^\star) > 0$. \qedhere
+\end{proof}
+
+\begin{proposition}[Vocabulary size bound]
+$|\mathcal{V}_M| \leq |\Sigma| + M$, with equality whenever every chosen pair produces a novel token (which holds in the byte-level case since each merge produces a string strictly longer than every $\sigma \in \Sigma$, and pairs are picked with positive count).
+\end{proposition}
+
+\begin{proof}
+By induction on $m$: $|\mathcal{V}_0| = |\Sigma|$, and $|\mathcal{V}_{m+1}| \leq |\mathcal{V}_m| + 1$. \qedhere
+\end{proof}
+
+\begin{remark}[Greedy vs.\ globally optimal]
+Among all vocabularies of size $|\Sigma| + M$, finding the one that minimizes the corpus token count $L$ is NP-hard: a reduction from \textsc{Set Cover} treats each candidate substring as a "set" of corpus positions it can cover, and the search for $M$ substrings minimizing residual length is a weighted set-cover variant. BPE is the \emph{greedy} approximation: at each step, take the merge with the largest immediate compression. There is no guarantee of global optimality; in practice BPE matches or beats more expensive alternatives on downstream perplexity.
+\end{remark}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+from collections import Counter
+
+def train_bpe(corpus, M):
+    seqs = [tuple(bytes(s, "utf-8")) for s in corpus]
+    merges = []
+    for _ in range(M):
+        pairs = Counter()
+        for seq in seqs:
+            pairs.update(zip(seq, seq[1:]))
+        if not pairs: break
+        best = max(pairs.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        merges.append(best)
+        seqs = [apply_merge(seq, best) for seq in seqs]
+    return merges
+\end{verbatim}
+
+A full runnable implementation, with training, encoding, decoding, and empirical verification of corpus-coverage monotonicity, lives in the chapter notebook.
+
+\subsection*{Connection to LLMs}
+
+The tokenizer is the \emph{interface} between raw bytes and the model. GPT-2 / 3 / 4 use byte-level BPE with $|\mathcal{V}| \approx 50{,}257$ (gpt2) up to $\approx 100{,}000$ (cl100k\_base). Llama uses SentencePiece BPE on Unicode with $\sim$32k vocab. Claude uses a custom BPE-like scheme. In every case, the chosen $\mathcal{V}$ fixes the row count of the embedding matrix $E \in \mathbb{R}^{|\mathcal{V}| \times d}$ from Chapter~19, and shapes everything downstream: the softmax cost in the LM head, the effective sequence length seen by attention, even what \emph{concepts} the model can express atomically. Chapter~27 explores tokenization pitfalls (numeric tokenization, multilinguality, "SolidGoldMagikarp"-style glitch tokens) that follow directly from BPE's greedy, frequency-driven design.
 
 % --- CHAPTER 26 END ---
 
@@ -2805,7 +3335,107 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 27: Pre-training pipeline: AdamW + warmup + cosine decay + gradient clipping; tiny-GPT training run}
 \addcontentsline{toc}{section}{Chapter 27: Pre-training pipeline: AdamW + warmup + cosine decay + gradient clipping; tiny-GPT training run}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapters~14, 23, 25, and 26 gave us all the pieces in isolation: AdamW, the transformer block, next-token-prediction (NTP) loss with a causal mask, and a tokenizer. This chapter assembles them into the \emph{pre-training pipeline} used by every modern decoder-only language model -- GPT-2/3/4, Llama, Mistral. The recipe is short enough to fit on a postcard:
+\[
+\text{corpus} \xrightarrow{\tau} \text{ids} \to (B,T) \to \text{transformer} \to \text{logits} \xrightarrow{\mathrm{CE}} L \xrightarrow{\nabla} g \xrightarrow{\text{clip}+\mathrm{AdamW}} \theta_{t+1}.
+\]
+Three engineering details -- learning-rate warmup, cosine decay, and gradient clipping -- separate ``diverges in 200 steps'' from ``trains stably for $10^{12}$ tokens.''
+
+\subsection*{Definitions}
+
+\begin{definition}[Pre-training pipeline]
+Given a corpus $\mathcal{C}$, tokenizer $\tau:\mathcal{C}\to\{1,\dots,V\}^*$, and a causal LM $p_\theta(x_t\mid x_{<t})$, \emph{pre-training} consists of: (i) encoding $\tau(\mathcal{C})$ into $x_1,\dots,x_N$; (ii) at each step $t$, sampling a batch of $B$ context windows of length $T$ and computing
+\[
+L_t = -\frac{1}{BT}\sum_{b,i}\log p_\theta(x^{(b)}_{i+1}\mid x^{(b)}_{\le i});
+\]
+(iii) backpropagating, clipping the global gradient norm, and taking an AdamW step under schedule $\eta_t$.
+\end{definition}
+
+\begin{definition}[Linear warmup]
+For horizon $W\in\mathbb{N}$ and peak $\eta_{\max}$,
+\[
+\eta_t^{\text{warm}} = \eta_{\max}\cdot\min\!\left(1,\tfrac{t}{W}\right).
+\]
+\end{definition}
+
+\begin{definition}[Cosine decay]
+For total horizon $T$, floor $\eta_{\min}$, and warmup $W$,
+\[
+\eta_t \;=\; \eta_{\min} + \tfrac{1}{2}(\eta_{\max}-\eta_{\min})\!\left(1 + \cos\!\left(\pi\cdot\tfrac{t-W}{T-W}\right)\right), \quad t\in[W,T].
+\]
+The combined schedule ramps linearly to $\eta_{\max}$ on $[0,W]$ and cosines down to $\eta_{\min}$ on $[W,T]$.
+\end{definition}
+
+\begin{definition}[Global-norm gradient clipping]
+Given $g=\nabla_\theta L\in\mathbb{R}^P$ and threshold $c>0$,
+\[
+\widetilde{g} \;=\; g\cdot\min\!\left(1,\tfrac{c}{\|g\|_2}\right).
+\]
+\end{definition}
+
+\begin{definition}[Mixed-precision (bf16) training]
+Forward/backward run in bf16 (8-bit exponent, 7-bit mantissa); the AdamW \emph{master} weights and moments stay in fp32. Activation memory $\approx \tfrac{1}{2}$, throughput typically $2\times$--$3\times$ on tensor cores.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Warmup stabilizes large early gradients]
+Let $L$ be $\beta$-smooth. The descent lemma gives
+\[
+L(\theta_{t+1}) \le L(\theta_t) - \eta_t\|\nabla L_t\|^2 + \tfrac{\beta}{2}\eta_t^2\|\nabla L_t\|^2.
+\]
+At initialization $\beta$ is effectively unbounded along directions where pre-norm activations have not equilibrated; thus the second-order term dominates whenever $\eta_t > 2/\beta$. Ramping $\eta_t$ from $0$ keeps the second-order penalty controlled. Once LayerNorm scales and Adam's $v_t$ stabilize, $\beta$ shrinks and a larger $\eta_{\max}$ becomes safe.
+\end{theorem}
+
+\begin{remark}
+RAdam (Liu et al.\ 2020) shows that Adam's variance estimate $\hat v_t$ has high variance for small $t$; warmup is essentially a poor man's variance correction.
+\end{remark}
+
+\begin{theorem}[Cosine decay shrinks the noise ball]
+Near a minimum $\theta^\star$, a quadratic approximation $L(\theta)\approx\tfrac{1}{2}(\theta-\theta^\star)^\top H(\theta-\theta^\star)$ implies the SGD iterate variance scales as $\Theta(\eta\sigma^2)$. Decaying $\eta_t\to\eta_{\min}$ shrinks the noise ball, allowing convergence to a sharper minimum.
+\end{theorem}
+
+\begin{remark}
+Empirically (Smith 2017, 1cycle; Loshchilov \& Hutter SGDR), cosine outperforms step- and exponential-decay across vision and language. Cosine in particular keeps $\eta$ near $\eta_{\max}$ during most of training (when exploration matters) and only collapses near the end.
+\end{remark}
+
+\begin{theorem}[Clipping preserves a per-step descent guarantee]
+Suppose $L$ is $\beta$-smooth and we clip the gradient to norm $\le c$. Then the AdamW step at rate $\eta$ satisfies
+\[
+\mathbb{E}[L(\theta_{t+1})] \le L(\theta_t) \;-\; \eta\,\mathbb{E}\!\left[\frac{\widetilde g_t^{\top}\nabla L(\theta_t)}{\sqrt{\hat v_t}+\epsilon}\right] \;+\; \frac{\beta\eta^2 c^2}{2}.
+\]
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Apply $\beta$-smoothness to $\theta_{t+1}=\theta_t-\eta m_t/(\sqrt{\hat v_t}+\epsilon)$; the second-order term is $O(\eta^2\|m_t\|^2)$, and $\|m_t\|\le c$ by EMA + clipping. The bound holds uniformly over batches, so a single bad gradient can no longer destroy the run.
+\end{proof}
+
+\begin{remark}[Chinchilla compute-optimal scaling]
+Hoffmann et al.\ (2022): for fixed compute $C\approx 6ND$ FLOPs (parameters $N$, tokens $D$), the loss-minimizing allocation satisfies $N^\star\propto C^{1/2}$ and $D^\star\propto C^{1/2}$. Scale parameters and data \emph{proportionally}. GPT-3 (175B/300B) was undertrained; Chinchilla (70B/1.4T) used the same compute and matched it. This is the rule that determines $T_{\text{train}}$ once $N$ and the compute budget are fixed.
+\end{remark}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+def lr_schedule(t, W, T, eta_max, eta_min):
+    if t < W:
+        return eta_max * t / W
+    p = (t - W) / (T - W)
+    return eta_min + 0.5*(eta_max-eta_min)*(1 + math.cos(math.pi*p))
+
+def clip_global_norm(grads, c=1.0):
+    flat = np.concatenate([g.ravel() for g in grads])
+    norm = np.linalg.norm(flat)
+    return [g * min(1.0, c / (norm + 1e-12)) for g in grads]
+\end{verbatim}
+
+The notebook implements forward/backward of a 2-layer tiny GPT in pure numpy, drives it with this schedule + clip, and trains to a clearly sub-trivial loss in under 5 minutes on a CPU.
+
+\subsection*{Connection to LLMs}
+
+This chapter \emph{is} the recipe. GPT-2 used exactly this pipeline (warmup $\approx$ 2K steps, cosine to $0.1\eta_{\max}$, clip $=1.0$, AdamW $\beta_2=0.95$). Llama-2 used the same pipeline with longer $W$, longer $T$, and bf16 mixed precision. From ``tiny GPT in this notebook'' to ``GPT-4 on a supercluster,'' only \emph{scale} changes: $V$ from $30$ to $10^5$, $T_{\text{ctx}}$ from $16$ to $10^4$--$10^5$, $d$ from $32$ to $10^4$, $N$ from $10^4$ to $10^{12}$, $D$ from $10^3$ to $10^{13}$ tokens. The control flow \texttt{for step in range(T): batch -> forward -> loss -> backward -> clip -> adamw\_step} is byte-identical.
 
 % --- CHAPTER 27 END ---
 
@@ -2817,7 +3447,119 @@ Scaled dot-product attention is \emph{the} primitive of every transformer langua
 \section*{Chapter 28: SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT}
 \addcontentsline{toc}{section}{Chapter 28: SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\section*{Motivation}
+
+Pre-training (Chapter~27) yields a base policy $\pi_{\mathrm{base}}$ optimized solely to assign high probability to next-token sequences from a corpus. Such a model is fluent but neither helpful nor safe. \emph{Post-training} converts $\pi_{\mathrm{base}}$ into an instruction-following policy aligned with human preferences. We treat the three dominant approaches: supervised fine-tuning (SFT), reinforcement learning from human feedback (RLHF) with PPO/GRPO, and direct preference optimization (DPO). The DPO derivation --- solving the KL-regularized RLHF objective in closed form and inverting the Bradley--Terry model --- is the centerpiece.
+
+\section*{Definitions}
+
+\begin{definition}[Supervised fine-tuning]
+Given $\mathcal{D}_{\mathrm{SFT}}=\{(x_i,y_i)\}$ of (prompt, response) pairs, continue training $\pi_{\mathrm{base}}$ with the next-token loss of Chapter~25, masking the prompt so the loss only fires on the response:
+\[
+\mathcal{L}_{\mathrm{SFT}}(\theta) = -\mathbb{E}_{(x,y)\sim\mathcal{D}_{\mathrm{SFT}}}\sum_{t=1}^{|y|}\log\pi_\theta(y_t\mid x,y_{<t}).
+\]
+The result is the \emph{reference model} $\pi_{\mathrm{ref}}:=\pi_{\mathrm{SFT}}$. This is MLE (Chapter~12) on the conditional response distribution.
+\end{definition}
+
+\begin{definition}[Reward model and Bradley--Terry]
+A scalar $r_\phi:(x,y)\to\mathbb{R}$ trained on preference triples $(x,y_w,y_l)$ via the Bradley--Terry (1952) likelihood
+\[
+\mathbb{P}(y_w\succ y_l\mid x) = \sigma\!\big(r_\phi(x,y_w)-r_\phi(x,y_l)\big),\quad
+\ell_{\mathrm{RM}} = -\log\sigma\!\big(r_\phi(x,y_w)-r_\phi(x,y_l)\big).
+\]
+\end{definition}
+
+\begin{definition}[RLHF objective; Christiano et al.\ 2017, Ouyang et al.\ 2022]
+\[
+\mathcal{J}(\theta) = \mathbb{E}_{x\sim\mathcal{D}}\,\mathbb{E}_{y\sim\pi_\theta(\cdot\mid x)}\!\big[r_\phi(x,y)\big] - \beta\,D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot\mid x)\,\|\,\pi_{\mathrm{ref}}(\cdot\mid x)\big),\qquad \beta>0.
+\]
+The KL leash (Chapter~11) prevents $\pi_\theta$ from drifting far from the SFT initialization.
+\end{definition}
+
+\begin{definition}[PPO clipped surrogate; Schulman et al.\ 2017]
+With importance ratio $\rho_t(\theta)=\pi_\theta(a_t\mid s_t)/\pi_{\mathrm{old}}(a_t\mid s_t)$ and advantage $\hat A_t$,
+\[
+\mathcal{L}^{\mathrm{PPO}}(\theta) = \mathbb{E}\!\Big[\min\!\big(\rho_t(\theta)\hat A_t,\,\mathrm{clip}(\rho_t(\theta),1-\varepsilon,1+\varepsilon)\hat A_t\big)\Big].
+\]
+\end{definition}
+
+\begin{definition}[GRPO; DeepSeek 2024]
+Drop the value network. Sample $G$ responses $\{y^{(i)}\}_{i=1}^G$ per prompt $x$, score each with $r_\phi$, and form the group-normalized advantage $\hat A^{(i)} = (r^{(i)}-\mu_g)/(\sigma_g+\epsilon)$ with $\mu_g,\sigma_g$ the empirical mean/std over the $G$ samples.
+\end{definition}
+
+\begin{definition}[DPO; Rafailov et al.\ 2023]
+\[
+\mathcal{L}_{\mathrm{DPO}}(\theta) = -\mathbb{E}_{(x,y_w,y_l)}\!\left[\log\sigma\!\left(\beta\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\mathrm{ref}}(y_w\mid x)} - \beta\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\mathrm{ref}}(y_l\mid x)}\right)\right].
+\]
+\end{definition}
+
+\section*{Theorems}
+
+\begin{theorem}[DPO derivation --- central result]
+Fix a reward $r$ and a reference policy $\pi_{\mathrm{ref}}$ with full support. The unique maximizer of
+$\mathcal{J}_x(\pi)=\mathbb{E}_{y\sim\pi}[r(x,y)]-\beta\,D_{\mathrm{KL}}(\pi\|\pi_{\mathrm{ref}})$
+over distributions $\pi(\cdot\mid x)$ on $\mathcal{V}^*$ is
+\[
+\pi^*(y\mid x) = \frac{1}{Z(x)}\,\pi_{\mathrm{ref}}(y\mid x)\,\exp\!\big(r(x,y)/\beta\big),\qquad Z(x)=\sum_y\pi_{\mathrm{ref}}(y\mid x)\exp(r(x,y)/\beta).
+\]
+Inverting and substituting into the Bradley--Terry log-likelihood yields the DPO loss; the $\log Z(x)$ terms cancel.
+\end{theorem}
+
+\begin{proof}
+Write the per-prompt objective as
+\begin{align*}
+\mathcal{J}_x(\pi)
+&= \sum_y\pi(y)r(x,y) - \beta\sum_y\pi(y)\log\frac{\pi(y)}{\pi_{\mathrm{ref}}(y)} \\
+&= -\beta\sum_y\pi(y)\log\frac{\pi(y)}{\pi_{\mathrm{ref}}(y)\exp(r(x,y)/\beta)}.
+\end{align*}
+Define the unnormalized measure $q(y):=\pi_{\mathrm{ref}}(y)\exp(r(x,y)/\beta)$ with $Z(x):=\sum_y q(y)$. Then
+\[
+\mathcal{J}_x(\pi) = -\beta\,D_{\mathrm{KL}}\!\big(\pi\,\|\,Z(x)^{-1}q\big) + \beta\log Z(x).
+\]
+By Gibbs' inequality (Chapter~11), $D_{\mathrm{KL}}\geq 0$ with equality iff $\pi=Z^{-1}q$, so the unique maximizer is
+$\pi^*(y\mid x) = Z(x)^{-1}\pi_{\mathrm{ref}}(y\mid x)\exp(r(x,y)/\beta)$.
+
+Solving for the reward gives
+$r(x,y) = \beta\log\!\dfrac{\pi^*(y\mid x)}{\pi_{\mathrm{ref}}(y\mid x)} + \beta\log Z(x).$
+For a preference triple $(x,y_w,y_l)$, substitute into the Bradley--Terry log-likelihood:
+\begin{align*}
+\log\sigma\!\big(r(x,y_w)-r(x,y_l)\big)
+&= \log\sigma\!\Bigg(\beta\log\frac{\pi^*(y_w|x)}{\pi_{\mathrm{ref}}(y_w|x)} - \beta\log\frac{\pi^*(y_l|x)}{\pi_{\mathrm{ref}}(y_l|x)} \\
+&\hspace{6em}+\beta\log Z(x)-\beta\log Z(x)\Bigg).
+\end{align*}
+The two $\beta\log Z(x)$ terms cancel --- this is the cancellation that eliminates the intractable partition function. Replacing $\pi^*$ with $\pi_\theta$ and negating the expectation yields $\mathcal{L}_{\mathrm{DPO}}(\theta)$.
+\end{proof}
+
+\begin{proposition}[PPO trust-region motivation]
+Let $\pi_{\mathrm{old}}$ be the policy before update and $\hat A$ an advantage estimator. The unclipped surrogate $L(\theta)=\mathbb{E}[\rho_t(\theta)\hat A_t]$ is a first-order approximation to the policy improvement $J(\pi_\theta)-J(\pi_{\mathrm{old}})$ in a neighborhood of $\pi_{\mathrm{old}}$ (Kakade--Langford 2002). The clip operator caps $|\rho_t-1|\le\varepsilon$ on every step where the unclipped objective would push the policy out of the trust region, yielding a pessimistic lower bound on the surrogate.
+\end{proposition}
+
+\begin{remark}
+A full proof (Achiam et al.\ 2017) bounds the total-variation distance between successive policies. PPO's clip is a cheap surrogate for TRPO's KL constraint; empirically it preserves monotonic improvement in nearly all settings.
+\end{remark}
+
+\begin{theorem}[GRPO advantage is unbiased]
+Let $r^{(1)},\dots,r^{(G)}$ be rewards of $G$ i.i.d.\ samples from $\pi_{\mathrm{old}}(\cdot\mid x)$ and $\hat A^{(i)}=(r^{(i)}-\mu_g)/(\sigma_g+\epsilon)$. Then $\mu_g$ acts as a (nearly) unbiased baseline: subtracting it from $r^{(i)}$ does not change the expected REINFORCE gradient.
+\end{theorem}
+
+\begin{proof}
+The REINFORCE estimator with baseline $b$ is $\hat g=\sum_i(r^{(i)}-b)\nabla_\theta\log\pi_\theta(y^{(i)}\mid x)$. The baseline lemma:
+\[
+\mathbb{E}_{y\sim\pi}\!\big[b\,\nabla_\theta\log\pi(y)\big]
+= b\sum_y\nabla_\theta\pi(y)
+= b\,\nabla_\theta\!\sum_y\pi(y)
+= b\,\nabla_\theta 1 = 0
+\]
+for any $b$ independent of $y$. The empirical mean $\mu_g$ is not strictly independent of the samples, but conditional on a single $y^{(j)}$, the leave-one-out mean over the other $G-1$ samples is independent of $y^{(j)}$; standard control-variate arguments give bias $O(1/G)$, vanishing as $G\to\infty$. Division by $\sigma_g$ rescales the loss by a data-dependent constant absorbed into the learning rate.
+\end{proof}
+
+\section*{Code sketch}
+
+We continue the tiny GPT of Chapter~27. The pipeline: (1) brief pre-train on a toy corpus to fix $\pi_{\mathrm{base}}$; (2) SFT on a handful of (prompt, response) pairs to obtain $\pi_{\mathrm{ref}}$; (3) train a Bradley--Terry reward head on $\sim 5$ preference triples and verify it ranks $y_w > y_l$; (4) compute one PPO clipped surrogate batch as a sanity check; (5) run DPO for a few hundred steps and verify $\pi_\theta(y_w\mid x)/\pi_\theta(y_l\mid x) > \pi_{\mathrm{ref}}(y_w\mid x)/\pi_{\mathrm{ref}}(y_l\mid x)$.
+
+\section*{Connection to LLMs}
+
+InstructGPT (Ouyang et al.\ 2022) introduced the SFT $\to$ RM $\to$ PPO recipe; GPT-3.5/4, Claude 1/2/3, Llama-2-Chat, and Llama-3-Instruct all use a variant. DeepSeek-R1 (2024) replaced PPO with GRPO, dropping the critic entirely. Zephyr, T\"ulu, and most open-weight chat models from late 2023 onward use DPO (or its variants IPO, KTO, ORPO) because the closed-form derivation eliminates reward-model training, on-policy sampling, and credit assignment over long sequences. The KL leash to $\pi_{\mathrm{ref}}$ is what prevents post-training from destroying the capabilities laid down in pre-training (Chapter~27): post-training \emph{reshapes} a small region of the policy manifold around the SFT initialization rather than learning a new model from scratch.
 
 % --- CHAPTER 28 END ---
 

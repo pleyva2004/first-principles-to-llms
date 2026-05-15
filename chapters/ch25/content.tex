@@ -1,0 +1,91 @@
+\subsection*{Motivation}
+
+We have a transformer block that mixes information across positions (Ch.~23) and a positional encoding that injects order (Ch.~24). To turn this into a \emph{language model} we must decide (i) what the network outputs, (ii) what loss to minimize, and (iii) how to reconcile parallel training with the constraint that the model never see future tokens. All three are settled by one design choice: \emph{causal masking + next-token prediction} (NTP).
+
+\subsection*{Definitions}
+
+\begin{definition}[Causal language model]
+A causal (decoder-only) language model with parameters $\theta$ assigns to a sequence $x_{1:T} = (x_1,\ldots,x_T) \in \mathcal{V}^T$ the joint
+\[
+  p_\theta(x_{1:T}) \;=\; \prod_{t=1}^{T} p_\theta\!\big(x_t \,\big|\, x_{<t}\big), \qquad x_{<t} := (x_1,\ldots,x_{t-1}).
+\]
+Each conditional $p_\theta(\cdot\mid x_{<t})$ is a softmax over $\mathcal{V}$ produced by a transformer applied to the prefix.
+\end{definition}
+
+\begin{definition}[Causal attention mask]
+For $T\in\mathbb{N}$, the causal mask is the matrix $M\in\{0,-\infty\}^{T\times T}$ with
+\[
+  M_{ij} = \begin{cases} 0, & j \le i,\\ -\infty, & j > i.\end{cases}
+\]
+Causal scaled dot-product attention replaces the score matrix $S = QK^\top/\sqrt{d_k}$ by $S+M$ before the row-wise softmax. Because $\exp(-\infty)=0$, row $i$ of the softmax has zero mass on every column $j>i$.
+\end{definition}
+
+\begin{definition}[Teacher forcing]
+At training, the input to predict $x_t$ is the ground-truth prefix $x_{<t}$, not the model's own previous predictions. Combined with the causal mask, this lets all $T$ predictions be computed in one parallel forward pass on $x_{1:T}$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Chain-rule factorization]\label{thm:chain}
+For any joint distribution $p$ on $\mathcal{V}^T$, $p(x_{1:T}) = \prod_{t=1}^T p(x_t \mid x_{<t})$.
+\end{theorem}
+\begin{proof}
+Iterate the conditional-probability identity (Ch.~8) $p(A,B) = p(A)\,p(B\mid A)$:
+$p(x_{1:T}) = p(x_1)\,p(x_2\mid x_1)\,p(x_3\mid x_{1:2})\cdots p(x_T\mid x_{<T})$.
+\end{proof}
+
+This identity holds for \emph{every} joint distribution; the modeling choice is to parameterize each conditional with a transformer. Causal masking is precisely what enforces this factorization at the level of the architecture.
+
+\begin{theorem}[NTP loss = empirical NLL = cross-entropy with $\hat p_{\mathcal{D}}$]\label{thm:ntp}
+Let $\mathcal{D} = \{x^{(n)}_{1:T_n}\}_{n=1}^{N}$ be a corpus of i.i.d.\ documents drawn from $p^\star$. Define
+\[
+  \mathcal{L}(\theta) \;=\; -\sum_{n=1}^{N}\sum_{t=1}^{T_n} \log p_\theta\!\left(x^{(n)}_t \mid x^{(n)}_{<t}\right).
+\]
+Then $\arg\min_\theta \mathcal{L}(\theta) = \arg\min_\theta H\!\big(\hat p_{\mathcal{D}},\, p_\theta\big)$, where $\hat p_{\mathcal{D}}$ is the empirical distribution and $H$ is cross-entropy.
+\end{theorem}
+\begin{proof}
+By Theorem~\ref{thm:chain}, $\log p_\theta(x_{1:T_n}^{(n)}) = \sum_t \log p_\theta(x_t^{(n)}\mid x_{<t}^{(n)})$, hence $\mathcal{L}(\theta) = -\sum_n \log p_\theta(x^{(n)})$. The empirical distribution $\hat p_{\mathcal{D}}(x) = \frac{1}{N}\sum_n \mathbb{1}[x = x^{(n)}]$ gives
+\[
+  H(\hat p_{\mathcal{D}}, p_\theta) = -\!\!\sum_{x\in\mathcal{V}^*}\hat p_{\mathcal{D}}(x)\log p_\theta(x) = -\frac{1}{N}\sum_n \log p_\theta(x^{(n)}) = \frac{1}{N}\,\mathcal{L}(\theta).
+\]
+Multiplying by $N>0$ does not change the argmin. By Ch.~12, this is exactly the MLE.
+\end{proof}
+
+\begin{corollary}[Consistency]
+If $\{p_\theta\}$ is correctly specified ($p^\star = p_{\theta^\star}$ for some $\theta^\star$) and identifiable, then the minimizer $\hat\theta_N$ converges to $\theta^\star$ as $N\to\infty$.
+\end{corollary}
+\begin{proof}[Sketch]
+By the law of large numbers, $\frac{1}{N}\mathcal{L}(\theta) \to -\mathbb{E}_{p^\star}\!\left[\log p_\theta(X)\right] = H(p^\star, p_\theta)$. Gibbs' inequality (Ch.~12) gives $H(p^\star, p_\theta)\ge H(p^\star)$ with equality iff $p_\theta = p^\star$. Identifiability + uniform convergence promote pointwise convergence of the minimizer to $\theta^\star$.
+\end{proof}
+
+\begin{theorem}[Causal mask preserves backprop locality]\label{thm:locality}
+With the causal mask, for every $(t,s)$ with $s>t$ and every input embedding $h^{(0)}_s$,
+\[
+  \frac{\partial \mathcal{L}_t}{\partial h^{(0)}_s} \;=\; 0,\qquad \mathcal{L}_t = -\log p_\theta(x_t\mid x_{<t}).
+\]
+\end{theorem}
+\begin{proof}
+By induction on layer depth $\ell$. At $\ell=0$, position-$i$ embedding depends only on $h^{(0)}_i$. Assume each layer's output $y^{(\ell)}_i$ depends only on $\{h^{(0)}_j\}_{j\le i}$. The next masked-attention output is
+$y^{(\ell+1)}_i = \sum_{j\le i} \alpha^{(\ell+1)}_{ij} V^{(\ell+1)}_j$ because $\alpha^{(\ell+1)}_{ij} = 0$ for $j>i$ (mask). Each $V^{(\ell+1)}_j$ is a linear function of $y^{(\ell)}_j$, which by hypothesis depends only on $\{h^{(0)}_k\}_{k\le j} \subseteq \{h^{(0)}_k\}_{k\le i}$. Pointwise sublayers (residuals, MLP, LayerNorm) act per-position. Hence $y^{(\ell+1)}_i$ depends only on $\{h^{(0)}_k\}_{k\le i}$. Setting $i=t$ at the final layer and applying the chain rule, $\partial \mathcal{L}_t/\partial h^{(0)}_s = 0$ for $s>t$.
+\end{proof}
+
+\begin{remark}[Why parallel training is sound]
+Theorem~\ref{thm:locality} implies that the gradient of $\mathcal{L} = \sum_t \mathcal{L}_t$ obtained from one forward pass on $x_{1:T}$ equals the sum of the $T$ gradients we would obtain from $T$ separate forward passes on the prefixes $x_{1:t}$. Causal masking thus turns $T$ sequential supervision signals into one parallel forward/backward pass --- the central engineering reason transformers train so much faster than RNNs.
+\end{remark}
+
+\begin{proposition}[Train vs.\ inference]
+Training (teacher forcing): one forward pass on $x_{1:T}$ in time $\Theta(T^2 d)$ produces all $T$ logits and the cumulative loss.
+Inference (autoregressive): given prompt $x_{1:k}$, sample $\hat x_{k+1}\sim p_\theta(\cdot\mid x_{1:k})$, append, repeat for $T-k$ steps. The asymmetry is intrinsic: at train time $x_{t+1}$ is known, at inference time it is whatever the model just produced.
+\end{proposition}
+
+\begin{definition}[Perplexity]
+$\mathrm{PPL}(x_{1:T}) := \exp\!\Big(\frac{1}{T}\sum_{t=1}^T -\log p_\theta(x_t\mid x_{<t})\Big) = \big(\prod_t p_\theta(x_t\mid x_{<t})\big)^{-1/T}$. Lower is better; a uniform model on $|\mathcal{V}|$ tokens achieves $\mathrm{PPL} = |\mathcal{V}|$.
+\end{definition}
+
+\subsection*{Code sketch}
+
+The accompanying notebook builds (i) an $8\times 8$ causal mask, (ii) a single-head causal attention layer that verifies row $t$ has zero weight on $j>t$, (iii) a tiny logits ``model'' confirming NTP loss equals summed cross-entropy with one-hot targets, (iv) a perturbation experiment in which changing the token at position $T$ leaves the logit at position $T-1$ unchanged --- an empirical witness of Theorem~\ref{thm:locality} --- and (v) perplexity comparisons between a uniform model and a trained tiny model.
+
+\subsection*{Connection to LLMs}
+
+Every modern decoder-only LLM --- GPT-1/2/3/4, Llama, Claude, Gemini --- is a causal language model trained with exactly the objective derived here. Pre-training scales the corpus $\mathcal{D}$ to trillions of tokens and the parameter count $|\theta|$ to hundreds of billions (Ch.~27 onward), but the objective never changes: minimize $-\sum_t \log p_\theta(x_t\mid x_{<t})$ on the empirical distribution, with the causal mask of Definition~2 making all $T$ per-token losses backprop-independent. Perplexity (or its log, the per-token NLL in nats/bits) remains the canonical metric on held-out text. The next chapters lift the architecture from this single-document loss to data-parallel optimization, scaling laws, and post-training (instruction tuning, RLHF).

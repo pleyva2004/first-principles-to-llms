@@ -1,0 +1,198 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 24 — Positional Encoding\n",
+      "\n",
+      "From Chapter 21 we know attention is permutation-equivariant: shuffling the input tokens shuffles the output identically. So a transformer without positional information cannot distinguish 'dog bites man' from 'man bites dog'. We need to inject token position into the representation.\n",
+      "\n",
+      "We will (1) numerically confirm the permutation problem, (2) build sinusoidal PEs and verify shift-as-rotation (Thm 24.1), (3) build RoPE and verify the relative-position theorem (Thm 24.2), and (4) verify translation invariance (Cor 24.3)."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def softmax(x, axis=-1):\n",
+      "    x = x - x.max(axis=axis, keepdims=True)\n",
+      "    e = np.exp(x)\n",
+      "    return e / e.sum(axis=axis, keepdims=True)\n",
+      "\n",
+      "def attention(X):\n",
+      "    # Self-attention with identity Q=K=V projections (clean isolation of permutation property)\n",
+      "    d = X.shape[-1]\n",
+      "    scores = X @ X.T / np.sqrt(d)\n",
+      "    return softmax(scores) @ X\n",
+      "\n",
+      "T, d = 5, 4\n",
+      "X = np.random.randn(T, d)\n",
+      "perm = np.array([2, 0, 4, 1, 3])\n",
+      "P = np.eye(T)[perm]\n",
+      "\n",
+      "Y = attention(X)\n",
+      "Yp = attention(P @ X)\n",
+      "print('||Yp - P @ Y|| =', np.linalg.norm(Yp - P @ Y))\n",
+      "print('Permutation-equivariance confirmed:', np.allclose(Yp, P @ Y))"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Sinusoidal positional encoding\n",
+      "\n",
+      "$\\mathrm{PE}(\\mathrm{pos}, 2i) = \\sin(\\mathrm{pos}\\,\\theta_i)$, $\\mathrm{PE}(\\mathrm{pos}, 2i+1) = \\cos(\\mathrm{pos}\\,\\theta_i)$, with $\\theta_i = 10000^{-2i/d}$. Different positions get distinct vectors; nearby positions get similar vectors at low-frequency dimensions but differ sharply at high-frequency dimensions."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def sinusoidal_pe(T, d, base=10000.0):\n",
+      "    assert d % 2 == 0\n",
+      "    pos = np.arange(T)[:, None]\n",
+      "    i = np.arange(d // 2)[None, :]\n",
+      "    theta = base ** (-2 * i / d)\n",
+      "    angles = pos * theta  # (T, d/2)\n",
+      "    PE = np.empty((T, d))\n",
+      "    PE[:, 0::2] = np.sin(angles)\n",
+      "    PE[:, 1::2] = np.cos(angles)\n",
+      "    return PE\n",
+      "\n",
+      "PE = sinusoidal_pe(T=32, d=16)\n",
+      "print('PE shape:', PE.shape)\n",
+      "print('First 3 positions, first 6 dims:')\n",
+      "print(np.round(PE[:3, :6], 3))\n",
+      "\n",
+      "try:\n",
+      "    import matplotlib.pyplot as plt\n",
+      "    plt.figure(figsize=(6, 4))\n",
+      "    plt.imshow(PE, aspect='auto', cmap='RdBu')\n",
+      "    plt.colorbar(); plt.xlabel('dim'); plt.ylabel('position')\n",
+      "    plt.title('Sinusoidal PE'); plt.tight_layout(); plt.show()\n",
+      "except Exception as e:\n",
+      "    print('(matplotlib unavailable, printed sample instead):', type(e).__name__)"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Shift-as-rotation (Theorem 24.1)\n",
+      "\n",
+      "For each frequency $\\theta_i$ and offset $k$, the pair $(\\sin(\\mathrm{pos}\\,\\theta_i), \\cos(\\mathrm{pos}\\,\\theta_i))$ shifts by a fixed $2\\times 2$ rotation. We construct the full block-diagonal $M_k$ and verify $\\mathrm{PE}(\\mathrm{pos}+k) = M_k \\cdot \\mathrm{PE}(\\mathrm{pos})$ to machine precision."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def shift_matrix(k, d, base=10000.0):\n",
+      "    # Acts on vectors ordered (sin_0, cos_0, sin_1, cos_1, ...) — matches sinusoidal_pe layout.\n",
+      "    M = np.zeros((d, d))\n",
+      "    for i in range(d // 2):\n",
+      "        theta = base ** (-2 * i / d)\n",
+      "        c, s = np.cos(k * theta), np.sin(k * theta)\n",
+      "        # [sin', cos']^T = [[c, s], [-s, c]] [sin, cos]^T\n",
+      "        M[2*i:2*i+2, 2*i:2*i+2] = np.array([[c, s], [-s, c]])\n",
+      "    return M\n",
+      "\n",
+      "d_test = 16\n",
+      "PE_full = sinusoidal_pe(T=64, d=d_test)\n",
+      "max_err = 0.0\n",
+      "for k in [1, 3, 7, 17]:\n",
+      "    Mk = shift_matrix(k, d_test)\n",
+      "    for pos in [0, 5, 23, 40]:\n",
+      "        lhs = PE_full[pos + k]\n",
+      "        rhs = Mk @ PE_full[pos]\n",
+      "        err = np.linalg.norm(lhs - rhs)\n",
+      "        max_err = max(max_err, err)\n",
+      "print(f'max ||PE(pos+k) - M_k PE(pos)|| over tests: {max_err:.3e}')\n",
+      "assert max_err < 1e-12, 'Theorem 24.1 violated'"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## RoPE construction\n",
+      "\n",
+      "Apply $R_{\\mathrm{pos}}$ to queries and keys before the dot product. We verify Theorem 24.2: $\\langle R_m q_m, R_n k_n \\rangle = q_m^\\top R_{n-m} k_n$, using $R_m^\\top = R_{-m}$ and $R_a R_b = R_{a+b}$."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def rope_matrix(pos, d, base=10000.0):\n",
+      "    R = np.zeros((d, d))\n",
+      "    for i in range(d // 2):\n",
+      "        theta = base ** (-2 * i / d)\n",
+      "        c, s = np.cos(pos * theta), np.sin(pos * theta)\n",
+      "        R[2*i:2*i+2, 2*i:2*i+2] = np.array([[c, -s], [s, c]])\n",
+      "    return R\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "T, d = 6, 8\n",
+      "Q = np.random.randn(T, d)\n",
+      "K = np.random.randn(T, d)\n",
+      "\n",
+      "# Method A: rotate then dot product.\n",
+      "Q_rot = np.stack([rope_matrix(m, d) @ Q[m] for m in range(T)])\n",
+      "K_rot = np.stack([rope_matrix(n, d) @ K[n] for n in range(T)])\n",
+      "scores_A = Q_rot @ K_rot.T\n",
+      "\n",
+      "# Method B: relative-rotation formulation q_m^T R_{n-m} k_n.\n",
+      "scores_B = np.zeros((T, T))\n",
+      "for m in range(T):\n",
+      "    for n in range(T):\n",
+      "        scores_B[m, n] = Q[m] @ rope_matrix(n - m, d) @ K[n]\n",
+      "\n",
+      "err = np.linalg.norm(scores_A - scores_B)\n",
+      "print(f'||scores_A - scores_B|| = {err:.3e}')\n",
+      "print('Theorem 24.2 verified:', np.allclose(scores_A, scores_B, atol=1e-12))"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Translation invariance (Corollary 24.3)\n",
+      "\n",
+      "Shift every position by a constant $c$. Since RoPE attention scores depend only on $n - m$, the score matrix should be unchanged. We verify for $c \\in \\{1, 5, 10\\}$."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def rope_attention_scores(Q, K, offset=0):\n",
+      "    T, d = Q.shape\n",
+      "    Qr = np.stack([rope_matrix(m + offset, d) @ Q[m] for m in range(T)])\n",
+      "    Kr = np.stack([rope_matrix(n + offset, d) @ K[n] for n in range(T)])\n",
+      "    return Qr @ Kr.T\n",
+      "\n",
+      "base_scores = rope_attention_scores(Q, K, offset=0)\n",
+      "for c in [1, 5, 10]:\n",
+      "    shifted = rope_attention_scores(Q, K, offset=c)\n",
+      "    err = np.linalg.norm(base_scores - shifted)\n",
+      "    print(f'c = {c:2d}: ||scores(c) - scores(0)|| = {err:.3e}')\n",
+      "    assert np.allclose(base_scores, shifted, atol=1e-10), 'Translation invariance failed'\n",
+      "print('Corollary 24.3 verified for all tested offsets.')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

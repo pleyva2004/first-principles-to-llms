@@ -1,0 +1,112 @@
+\subsection*{Motivation}
+
+In Chapter~21 we proved that scaled dot-product attention is \emph{permutation-equivariant}: for any permutation matrix $P$ and sequence $X \in \mathbb{R}^{T \times d}$,
+\[
+\mathrm{Attention}(PX, PX, PX) \;=\; P \cdot \mathrm{Attention}(X, X, X).
+\]
+A direct corollary is catastrophic for language modeling: shuffling the tokens of a sentence and feeding them to attention produces the same set of output vectors, only re-indexed. Attention by itself sees a \emph{bag} of tokens, not a sequence. To recover order, we must inject the position $t \in \{0, 1, \ldots, T-1\}$ into the representations.
+
+Three approaches dominate practice: \textbf{sinusoidal} positional encodings (Vaswani et al.\ 2017), \textbf{learned} positional embeddings (BERT, GPT-2), and \textbf{rotary position embedding} or \textbf{RoPE} (Su et al.\ 2021), used by Llama, Mistral, Claude, Gemini, and most modern LLMs. We derive all three and prove the central RoPE relative-position theorem.
+
+\subsection*{Definitions}
+
+\begin{definition}[Sinusoidal positional encoding]
+For position $\mathrm{pos} \in \mathbb{N}$ and even embedding dimension $d$, define $\mathrm{PE}(\mathrm{pos}) \in \mathbb{R}^d$ by
+\[
+\mathrm{PE}(\mathrm{pos}, 2i) = \sin(\mathrm{pos}\cdot \theta_i), \qquad
+\mathrm{PE}(\mathrm{pos}, 2i+1) = \cos(\mathrm{pos}\cdot \theta_i),
+\]
+with frequencies $\theta_i := 10000^{-2i/d}$ for $i = 0, \ldots, d/2 - 1$. The position-aware token representation is $x_t = E[\mathrm{token}_t] + \mathrm{PE}(t)$.
+\end{definition}
+
+\begin{definition}[Learned positional embedding]
+Fix $T_{\max}$. Let $P \in \mathbb{R}^{T_{\max} \times d}$ be a parameter matrix. The position embedding at $t$ is the row $P_t$, learned end-to-end with the rest of the model.
+\end{definition}
+
+\begin{definition}[Rotary position embedding (RoPE)]
+Group the $d$ coordinates of a query or key vector into $d/2$ consecutive pairs. For pair $i$ at position $\mathrm{pos}$, set
+\[
+R_{\mathrm{pos}, i} \;=\; \begin{pmatrix} \cos(\mathrm{pos}\,\theta_i) & -\sin(\mathrm{pos}\,\theta_i) \\ \sin(\mathrm{pos}\,\theta_i) & \cos(\mathrm{pos}\,\theta_i) \end{pmatrix},
+\qquad \theta_i = 10000^{-2i/d}.
+\]
+Let $R_{\mathrm{pos}} \in \mathbb{R}^{d \times d}$ be the block-diagonal matrix with these rotations on the diagonal. RoPE acts on the projected queries and keys multiplicatively:
+\[
+q_m^{\mathrm{rot}} = R_m\, q_m, \qquad k_n^{\mathrm{rot}} = R_n\, k_n.
+\]
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Sinusoidal PE encodes shift as rotation]
+\label{thm:sinusoidal-shift}
+For every offset $k \in \mathbb{Z}$ there exists a fixed block-diagonal matrix $M_k \in \mathbb{R}^{d \times d}$, independent of $\mathrm{pos}$, such that
+\[
+\mathrm{PE}(\mathrm{pos} + k) \;=\; M_k \cdot \mathrm{PE}(\mathrm{pos}).
+\]
+\end{theorem}
+
+\begin{proof}
+Restrict to the $i$-th coordinate pair. By the trigonometric addition formulas,
+\begin{align*}
+\sin\big((\mathrm{pos}+k)\theta_i\big) &= \sin(\mathrm{pos}\,\theta_i)\cos(k\theta_i) + \cos(\mathrm{pos}\,\theta_i)\sin(k\theta_i), \\
+\cos\big((\mathrm{pos}+k)\theta_i\big) &= \cos(\mathrm{pos}\,\theta_i)\cos(k\theta_i) - \sin(\mathrm{pos}\,\theta_i)\sin(k\theta_i).
+\end{align*}
+With $c := \cos(k\theta_i)$, $s := \sin(k\theta_i)$, the pair transforms as
+\[
+\begin{pmatrix} \sin((\mathrm{pos}+k)\theta_i) \\ \cos((\mathrm{pos}+k)\theta_i) \end{pmatrix}
+= \begin{pmatrix} c & s \\ -s & c \end{pmatrix}
+\begin{pmatrix} \sin(\mathrm{pos}\,\theta_i) \\ \cos(\mathrm{pos}\,\theta_i) \end{pmatrix}.
+\]
+The $2\times 2$ matrix depends only on $k$ and $\theta_i$, not on $\mathrm{pos}$. Stacking these blocks for $i = 0, \ldots, d/2 - 1$ yields the claimed $M_k$.
+\end{proof}
+
+\begin{theorem}[RoPE relative-position property]
+\label{thm:rope-relative}
+For all $m, n \in \mathbb{N}$ and all $q_m, k_n \in \mathbb{R}^d$,
+\[
+\big\langle R_m\, q_m,\ R_n\, k_n \big\rangle \;=\; q_m^{\top}\, R_{n - m}\, k_n.
+\]
+\end{theorem}
+
+\begin{proof}
+Each $R_{\mathrm{pos}, i}$ is a planar rotation, hence
+\[
+R_{\mathrm{pos}, i}^{\top} = R_{-\mathrm{pos}, i}, \qquad R_{a, i}\, R_{b, i} = R_{a + b, i},
+\]
+the latter being the angle-addition identity for $\mathrm{SO}(2)$. Lifting to block-diagonal matrices preserves both: $R_m^{\top} = R_{-m}$ and $R_a R_b = R_{a+b}$. Therefore
+\[
+\langle R_m q_m,\, R_n k_n \rangle
+= q_m^{\top} R_m^{\top} R_n k_n
+= q_m^{\top} R_{-m} R_n k_n
+= q_m^{\top} R_{n - m} k_n. \qedhere
+\]
+\end{proof}
+
+\begin{corollary}[Translation invariance]
+\label{cor:translation-invariance}
+For any $c \in \mathbb{Z}$, $\langle R_{m+c} q_m,\, R_{n+c} k_n \rangle = \langle R_m q_m,\, R_n k_n \rangle$.
+\end{corollary}
+
+\begin{proof}
+By Theorem~\ref{thm:rope-relative}, the left-hand side equals $q_m^{\top} R_{(n+c)-(m+c)} k_n = q_m^{\top} R_{n-m} k_n$, which equals the right-hand side, again by Theorem~\ref{thm:rope-relative}.
+\end{proof}
+
+\begin{proposition}[RoPE has no learnable parameters]
+The map $(q, k, \mathrm{pos}) \mapsto (R_{\mathrm{pos}} q,\, R_{\mathrm{pos}} k)$ contains no trainable weights: the frequencies $\theta_i = 10000^{-2i/d}$ are fixed and $R_{\mathrm{pos}}$ is defined for every integer $\mathrm{pos}$.
+\end{proposition}
+
+\begin{proof}
+By inspection of the definition.
+\end{proof}
+
+\begin{remark}
+A model trained with context length $T_{\mathrm{train}}$ can in principle be evaluated at $\mathrm{pos} > T_{\mathrm{train}}$ since $R_{\mathrm{pos}}$ is defined for all integers. Learned positional embeddings cannot: there is no row $P_t$ for $t \geq T_{\max}$. RoPE thus offers a principled (if imperfect) path to length extrapolation, refined by NTK-aware scaling, YaRN, and Position Interpolation in Chapter~27.
+\end{remark}
+
+\subsection*{Code Sketch}
+
+The accompanying notebook (i) confirms permutation-invariance of vanilla attention numerically, (ii) implements and visualizes the sinusoidal PE matrix, (iii) verifies Theorem~\ref{thm:sinusoidal-shift} by checking $\|\mathrm{PE}(\mathrm{pos}+k) - M_k \mathrm{PE}(\mathrm{pos})\| < 10^{-12}$, (iv) implements RoPE for $d=8$, $T=6$ and confirms Theorem~\ref{thm:rope-relative} by comparing $\langle R_m q_m, R_n k_n \rangle$ against $q_m^{\top} R_{n-m} k_n$, and (v) verifies Corollary~\ref{cor:translation-invariance} by shifting all positions by $c \in \{1, 5, 10\}$ and confirming the attention score matrix is unchanged.
+
+\subsection*{Connection to LLMs}
+
+Vaswani et al.'s original Transformer used sinusoidal PEs. BERT and GPT-2 switched to learned PEs, trading off extrapolation for marginal accuracy gains within the training context. From Llama (2023) onward, RoPE is the de facto standard: Theorem~\ref{thm:rope-relative} states that attention scores depend only on token \emph{separation}, matching the linguistic intuition that ``the dog \emph{across the street}'' should attend the same way regardless of where the phrase appears in the document. Combined with extrapolation techniques (Chapter~27), RoPE has enabled context windows from $2$K (Llama~1) to $1$M+ tokens (Claude, Gemini). Chapter~23 introduced multi-head attention; positional encoding is applied per-head before the dot product, so RoPE composes cleanly with multi-head splitting and with everything that follows.

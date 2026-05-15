@@ -1,0 +1,98 @@
+[
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Post-training the tiny GPT: SFT, RM, PPO, DPO\n\nWe continue the tiny GPT of Chapter 27. Pre-training only optimizes next-token likelihood on a corpus, so the model is fluent but does not follow instructions. The post-training pipeline:\n\n1. **SFT** on a handful of (prompt, response) pairs $\\Rightarrow$ obtain $\\pi_{\\mathrm{ref}}$.\n2. Train a **Bradley-Terry reward model** on preference triples $(x, y_w, y_l)$.\n3. **PPO** sketch: compute the clipped surrogate on one batch.\n4. **DPO** fine-tune $\\pi_\\theta$ from $\\pi_{\\mathrm{ref}}$ and verify the preference ratio increases.\n\nAll numpy + stdlib; CPU runnable in under 5 minutes.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "import numpy as np, math, time\nnp.random.seed(0)\n\n# ----- Tiny corpus (char-level) \u2014 extends Chapter 27's toy corpus -----\ncorpus = (\n    'the cat sat on the mat. '\n    'the dog sat on the log. '\n    'the cat ate the fish. '\n    'the dog ate the bone. '\n    'a cat is a pet. a dog is a pet. '\n    'fish swim in the water. birds fly in the sky. '\n) * 8\n\nchars = sorted(set(corpus))\nV = len(chars)\nstoi = {c:i for i,c in enumerate(chars)}\nitos = {i:c for c,i in stoi.items()}\ndata = np.array([stoi[c] for c in corpus], dtype=np.int64)\nprint('vocab size V =', V, '  corpus tokens =', len(data))\n\n# ----- Tiny GPT (numpy) \u2014 1 layer, single-head attention, short context -----\n# Architecture: token+pos embed -> attn -> MLP -> unembed (tied weights).\n# We only train the token-embedding matrix (sufficient for this demo, since\n# the unembed is tied so updating tok updates both directions).\n\nT   = 16    # context length\nd   = 32    # model dim\nd_ff= 64\n\ndef init(shape, scale=0.02):\n    return np.random.randn(*shape).astype(np.float32) * scale\n\nparams = {\n    'tok': init((V, d)),\n    'pos': init((T, d)),\n    'Wq':  init((d, d)),\n    'Wk':  init((d, d)),\n    'Wv':  init((d, d)),\n    'Wo':  init((d, d)),\n    'W1':  init((d, d_ff)),\n    'b1':  np.zeros(d_ff, dtype=np.float32),\n    'W2':  init((d_ff, d)),\n    'b2':  np.zeros(d, dtype=np.float32),\n}\n\ndef softmax(x, axis=-1):\n    x = x - x.max(axis=axis, keepdims=True)\n    e = np.exp(x)\n    return e / e.sum(axis=axis, keepdims=True)\n\ndef forward(idx, p):\n    # idx: (B, T) int64\n    B, Tloc = idx.shape\n    x = p['tok'][idx] + p['pos'][:Tloc]              # (B,T,d)\n    Q = x @ p['Wq']; K = x @ p['Wk']; Vv = x @ p['Wv']\n    att = Q @ K.transpose(0,2,1) / math.sqrt(d)      # (B,T,T)\n    mask = np.triu(np.ones((Tloc,Tloc), dtype=bool), 1)\n    att = np.where(mask, -1e9, att)\n    A = softmax(att, axis=-1)\n    h = (A @ Vv) @ p['Wo'] + x                       # residual\n    h_mlp = np.maximum(h @ p['W1'] + p['b1'], 0) @ p['W2'] + p['b2']\n    h = h + h_mlp                                     # residual\n    logits = h @ p['tok'].T                           # tied unembed\n    return logits, h\n\ndef loss_and_grad(idx_x, idx_y, p, lr_mask=None):\n    # NTP loss with optional per-position mask (1 = include in loss).\n    # Only computes gradient w.r.t. the token-embedding matrix (tied unembed).\n    B, Tloc = idx_x.shape\n    logits, h = forward(idx_x, p)\n    P = softmax(logits, axis=-1)\n    if lr_mask is None:\n        lr_mask = np.ones_like(idx_y, dtype=np.float32)\n    n = lr_mask.sum() + 1e-8\n    onehot = np.zeros_like(P)\n    bidx = np.arange(B)[:,None]; tidx = np.arange(Tloc)[None,:]\n    onehot[bidx, tidx, idx_y] = 1.0\n    nll = -np.log(P[bidx, tidx, idx_y] + 1e-9)\n    loss = float((nll * lr_mask).sum() / n)\n    dlogits = (P - onehot) * lr_mask[..., None] / n   # (B,T,V)\n    grads = {k: np.zeros_like(v) for k,v in p.items()}\n    dlogits_flat = dlogits.reshape(-1, V)             # (B*T, V)\n    h_flat       = h.reshape(-1, d)                   # (B*T, d)\n    grads['tok'] = dlogits_flat.T @ h_flat            # (V, d) \u2014 unembed grad\n    return loss, grads, P, h\n\ndef make_batches(data, B, T, n_batches):\n    starts = np.random.randint(0, len(data) - T - 1, size=(n_batches, B))\n    Xs = np.stack([np.stack([data[s:s+T] for s in row]) for row in starts])\n    Ys = np.stack([np.stack([data[s+1:s+T+1] for s in row]) for row in starts])\n    return Xs, Ys\n\n# Pre-training loop \u2014 updates tied tok-embeddings only.\nB = 16\nlr = 0.5\nt0 = time.time()\nloss_hist = []\nXs, Ys = make_batches(data, B, T, 200)\nfor step in range(200):\n    x, y = Xs[step], Ys[step]\n    loss, grads, _, _ = loss_and_grad(x, y, params)\n    params['tok'] -= lr * grads['tok']\n    loss_hist.append(loss)\nprint(f'pre-train: step 0 loss = {loss_hist[0]:.3f}   step 199 loss = {loss_hist[-1]:.3f}')\nprint(f'pre-train wall time: {time.time()-t0:.2f}s')\npi_base_tok = params['tok'].copy()\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## SFT \u2014 supervised fine-tuning\n\nTiny dataset of (prompt, response) pairs in the same toy style. Loss only fires on the response tokens (prompt-token mask = 0). Result: the *reference model* $\\pi_{\\mathrm{ref}}$.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "sft_pairs = [\n    ('the cat ',     'sat on the mat. '),\n    ('the dog ',     'sat on the log. '),\n    ('a cat is ',    'a pet. '),\n    ('a dog is ',    'a pet. '),\n    ('fish ',        'swim in the water. '),\n    ('birds ',       'fly in the sky. '),\n    ('the cat ate ', 'the fish. '),\n    ('the dog ate ', 'the bone. '),\n]\n\ndef encode_pair(prompt, response, T):\n    full = (prompt + response)[:T]\n    pad  = T - len(full)\n    full = full + ' ' * pad\n    ids  = np.array([stoi.get(c, 0) for c in full], dtype=np.int64)\n    # mask: 1 on response tokens (after the prompt)\n    p_len = min(len(prompt), T)\n    mask  = np.zeros(T, dtype=np.float32)\n    mask[p_len:p_len+len(response)] = 1.0\n    return ids, mask\n\ndef make_sft_batch():\n    xs, ys, ms = [], [], []\n    for p, r in sft_pairs:\n        ids, mask = encode_pair(p, r, T+1)\n        xs.append(ids[:-1]); ys.append(ids[1:])\n        ms.append(mask[1:])  # mask aligned with prediction targets\n    return np.stack(xs), np.stack(ys), np.stack(ms)\n\nx_sft, y_sft, m_sft = make_sft_batch()\nloss0, _, _, _ = loss_and_grad(x_sft, y_sft, params, lr_mask=m_sft)\nprint(f'SFT loss before: {loss0:.4f}')\n\nsft_lr = 0.3\nfor step in range(120):\n    loss, grads, _, _ = loss_and_grad(x_sft, y_sft, params, lr_mask=m_sft)\n    params['tok'] -= sft_lr * grads['tok']\nloss1, _, _, _ = loss_and_grad(x_sft, y_sft, params, lr_mask=m_sft)\nprint(f'SFT loss after : {loss1:.4f}')\nsft_loss_drop = loss0 - loss1\nprint(f'SFT loss drop  : {sft_loss_drop:+.4f}')\n\n# Snapshot pi_ref\npi_ref_tok = params['tok'].copy()\n\ndef sequence_logprob(prompt, response, p_tok):\n    \"\"\"Sum log-prob of response chars conditioned on prompt under params['tok']=p_tok.\"\"\"\n    saved = params['tok']; params['tok'] = p_tok\n    text = (prompt + response)[:T]\n    ids = np.array([stoi.get(c,0) for c in text.ljust(T)], dtype=np.int64)[None,:]\n    logits, _ = forward(ids, params)\n    P = softmax(logits, axis=-1)[0]\n    p_len = len(prompt)\n    lp = 0.0\n    for t in range(p_len, min(len(text), T)-1):\n        lp += math.log(P[t-1, stoi[text[t]]] + 1e-12)\n    params['tok'] = saved\n    return lp\n\n# Quick generation-quality sanity check\nfor prompt in ['the cat ', 'a dog is ']:\n    lp_good = sequence_logprob(prompt, 'sat on the mat. ' if 'cat' in prompt else 'a pet. ', pi_ref_tok)\n    lp_bad  = sequence_logprob(prompt, 'fly in the sky. ', pi_ref_tok)\n    print(f'  prompt={prompt!r:14s}  logp(target)={lp_good:+.2f}  logp(off-topic)={lp_bad:+.2f}')\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Preference dataset + Bradley-Terry reward model\n\nFive preference triples $(x, y_w, y_l)$ where $y_w$ is the better continuation.\n\nThe reward model is a single linear head on top of the (frozen) tiny GPT's last hidden state, summed over the response tokens. Loss: $-\\log\\sigma(r_\\phi(x,y_w)-r_\\phi(x,y_l))$.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "pref_triples = [\n    ('the cat ',  'sat on the mat. ',  'fly in the sky. '),\n    ('the dog ',  'sat on the log. ',  'swim in the water. '),\n    ('a cat is ', 'a pet. ',            'a fish. '),\n    ('fish ',     'swim in the water. ','sat on the mat. '),\n    ('birds ',    'fly in the sky. ',  'sat on the log. '),\n]\n\ndef hidden_for(prompt, response, p_tok):\n    saved = params['tok']; params['tok'] = p_tok\n    text = (prompt + response)[:T].ljust(T)\n    ids  = np.array([stoi.get(c,0) for c in text], dtype=np.int64)[None,:]\n    _, h = forward(ids, params)\n    p_len = len(prompt)\n    # Sum hidden states over response token positions\n    pooled = h[0, p_len:p_len+len(response)].mean(axis=0)\n    params['tok'] = saved\n    return pooled  # (d,)\n\n# Reward head: r_phi(x,y) = w . pooled_hidden + b\nw_r = np.zeros(d, dtype=np.float32)\nb_r = np.float32(0.0)\n\ndef rm_score(prompt, response):\n    h = hidden_for(prompt, response, pi_ref_tok)\n    return float(w_r @ h + b_r), h\n\nrm_lr = 0.2\nrm_loss_hist = []\nfor step in range(150):\n    grad_w = np.zeros_like(w_r); grad_b = 0.0; tot = 0.0\n    for x_p, y_w, y_l in pref_triples:\n        s_w, h_w = rm_score(x_p, y_w)\n        s_l, h_l = rm_score(x_p, y_l)\n        diff = s_w - s_l\n        # loss = -log sigmoid(diff)\n        sig = 1.0 / (1.0 + math.exp(-diff))\n        tot += -math.log(sig + 1e-12)\n        # d/d(diff) of -log sigma(diff) = -(1-sigma) = sigma - 1\n        g = (sig - 1.0)\n        grad_w += g * (h_w - h_l)\n        grad_b += g * 0.0  # b cancels (it's the same scalar in both terms)\n    w_r -= rm_lr * grad_w / len(pref_triples)\n    rm_loss_hist.append(tot / len(pref_triples))\n\nprint(f'RM loss: start {rm_loss_hist[0]:.4f}  end {rm_loss_hist[-1]:.4f}')\nrm_loss_drop = rm_loss_hist[0] - rm_loss_hist[-1]\nprint(f'RM loss drop: {rm_loss_drop:+.4f}')\n\n# Verify ranking on training data\ncorrect = 0\nfor x_p, y_w, y_l in pref_triples:\n    s_w, _ = rm_score(x_p, y_w); s_l, _ = rm_score(x_p, y_l)\n    correct += int(s_w > s_l)\nprint(f'RM ranks y_w > y_l on {correct}/{len(pref_triples)} training triples')\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## RLHF / PPO sketch\n\nWe do not run a full PPO loop (would require a value head, GAE, multiple epochs). Instead we demonstrate the **clipped surrogate** on a small batch:\n$$\\mathcal{L}^{\\mathrm{PPO}} = \\mathbb{E}\\big[\\min(\\rho_t \\hat A_t,\\ \\mathrm{clip}(\\rho_t,1-\\varepsilon,1+\\varepsilon)\\hat A_t)\\big].$$\nWe synthesize $\\rho_t$ values around 1 and use the RM scores (mean-centered) as advantages.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "epsilon = 0.2\n# Pretend we sampled 5 trajectories (one per pref triple). Use y_w as the action.\nadv = []\nfor x_p, y_w, y_l in pref_triples:\n    s_w, _ = rm_score(x_p, y_w)\n    s_l, _ = rm_score(x_p, y_l)\n    adv.append(s_w)\n    adv.append(s_l)\nadv = np.array(adv, dtype=np.float32)\nadv_centered = adv - adv.mean()                    # group-mean baseline (GRPO-style)\nadv_norm     = adv_centered / (adv.std() + 1e-6)\n\n# Importance ratios \u2014 synthesize a small spread around 1.\nrho = np.array([0.85, 1.10, 0.95, 1.30, 1.05, 0.70, 0.98, 1.22, 1.18, 0.80], dtype=np.float32)\n\nunclipped = rho * adv_norm\nclipped   = np.clip(rho, 1-epsilon, 1+epsilon) * adv_norm\nL_ppo     = np.minimum(unclipped, clipped).mean()\nprint('importance ratios   :', np.round(rho, 3))\nprint('group-norm advantages:', np.round(adv_norm, 3))\nprint('unclipped surrogate :', np.round(unclipped, 3))\nprint('clipped surrogate   :', np.round(clipped, 3))\nprint(f'PPO objective (mean min): {L_ppo:.4f}')\nprint('Clipping fired on positions where rho was outside [%.2f, %.2f].' % (1-epsilon, 1+epsilon))\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## DPO loss + derivation summary\n\nFrom the closed-form solution to the KL-regularized RLHF objective,\n$\\pi^*(y|x) \\propto \\pi_{\\mathrm{ref}}(y|x)\\exp(r(x,y)/\\beta)$, one inverts to recover $r$ in terms of $\\pi^*$ and $\\pi_{\\mathrm{ref}}$. Substituting into Bradley-Terry, the partition function $Z(x)$ cancels between $y_w$ and $y_l$, leaving\n$$\\mathcal{L}_{\\mathrm{DPO}}(\\theta) = -\\log\\sigma\\!\\Big(\\beta\\big[\\log\\tfrac{\\pi_\\theta(y_w|x)}{\\pi_{\\mathrm{ref}}(y_w|x)} - \\log\\tfrac{\\pi_\\theta(y_l|x)}{\\pi_{\\mathrm{ref}}(y_l|x)}\\big]\\Big).$$\nWe implement this directly: gradient w.r.t.\\ $\\pi_\\theta$ pushes the preferred response higher and the rejected one lower, *relative to the reference*.\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "beta = 0.1\n\ndef seq_logp_under(p_tok, prompt, response):\n    return sequence_logprob(prompt, response, p_tok)\n\ndef dpo_loss(theta_tok):\n    losses = []\n    for x_p, y_w, y_l in pref_triples:\n        lp_th_w = seq_logp_under(theta_tok, x_p, y_w)\n        lp_th_l = seq_logp_under(theta_tok, x_p, y_l)\n        lp_rf_w = seq_logp_under(pi_ref_tok, x_p, y_w)\n        lp_rf_l = seq_logp_under(pi_ref_tok, x_p, y_l)\n        z = beta * ((lp_th_w - lp_rf_w) - (lp_th_l - lp_rf_l))\n        # numerically stable -log sigmoid(z) = softplus(-z)\n        losses.append(math.log1p(math.exp(-z)) if z > -50 else -z)\n    return float(np.mean(losses))\n\ndef pref_ratio(p_tok):\n    ratios = []\n    for x_p, y_w, y_l in pref_triples:\n        lp_w = seq_logp_under(p_tok, x_p, y_w)\n        lp_l = seq_logp_under(p_tok, x_p, y_l)\n        ratios.append(lp_w - lp_l)   # log of ratio\n    return float(np.mean(ratios))\n\n# Initialize theta := pi_ref (so DPO starts from the SFT model)\ntheta_tok = pi_ref_tok.copy()\nparams['tok'] = theta_tok\n\nratio_ref = pref_ratio(pi_ref_tok)\nprint(f'mean log[pi(y_w)/pi(y_l)] under pi_ref (SFT): {ratio_ref:+.4f}')\n\nloss0 = dpo_loss(theta_tok)\nprint(f'DPO loss before: {loss0:.4f}')\n\n# Analytic gradient of DPO loss w.r.t. token-embedding (tied unembed) parameters.\n#   L = -log sigma(z),  z = beta * [ (lp_th_w - lp_rf_w) - (lp_th_l - lp_rf_l) ]\n#   dL/dz = -(1 - sigma(z)) = -sigma(-z) =: -s_neg\n#   dL/d(lp_th_w) = -beta * s_neg ;  dL/d(lp_th_l) = +beta * s_neg\n#   d(log p(y_t|...))/d(logit_v) = onehot_t(v) - P_t(v)\n# So: dL/d(logit_v at position t-1) =\n#       -beta * s_neg * (onehot - P)   (for y_w response tokens)\n#       +beta * s_neg * (onehot - P)   (for y_l response tokens)\n# i.e. = sign * beta * s_neg * (P - onehot) with sign=+1 for y_w, -1 for y_l.\n\ndpo_lr = 2.0\nfor step in range(150):\n    grad_tok = np.zeros_like(theta_tok)\n    for x_p, y_w, y_l in pref_triples:\n        lp_th_w = seq_logp_under(theta_tok, x_p, y_w)\n        lp_th_l = seq_logp_under(theta_tok, x_p, y_l)\n        lp_rf_w = seq_logp_under(pi_ref_tok, x_p, y_w)\n        lp_rf_l = seq_logp_under(pi_ref_tok, x_p, y_l)\n        z = beta * ((lp_th_w - lp_rf_w) - (lp_th_l - lp_rf_l))\n        s_neg = 1.0 / (1.0 + math.exp(z)) if z < 50 else 0.0\n        for tgt_text, sign in [(x_p+y_w, +1.0), (x_p+y_l, -1.0)]:\n            text = tgt_text[:T].ljust(T)\n            ids  = np.array([stoi.get(c,0) for c in text], dtype=np.int64)[None,:]\n            params['tok'] = theta_tok\n            logits, h = forward(ids, params)\n            P = softmax(logits, axis=-1)[0]\n            p_len = len(x_p)\n            for t in range(p_len, min(len(tgt_text), T)-1):\n                tgt = stoi[tgt_text[t]]\n                onehot = np.zeros(V, dtype=np.float32); onehot[tgt] = 1.0\n                # gradient of L (to be subtracted in SGD step):\n                #   for y_w (sign=+1): dL/dlogit = -beta*s_neg*(onehot-P) = +beta*s_neg*(P-onehot)\n                #   for y_l (sign=-1): dL/dlogit = +beta*s_neg*(onehot-P) = -beta*s_neg*(P-onehot)\n                # Combined: dL/dlogit = sign * beta * s_neg * (P - onehot)\n                dlogit = sign * beta * s_neg * (P[t-1] - onehot)\n                # logits = h @ tok.T  =>  d(logit_v)/d(tok[v,:]) = h[t-1]\n                grad_tok += np.outer(dlogit, h[0, t-1])\n    theta_tok -= dpo_lr * grad_tok / len(pref_triples)\n\nloss1 = dpo_loss(theta_tok)\nprint(f'DPO loss after : {loss1:.4f}')\ndpo_loss_drop = loss0 - loss1\nprint(f'DPO loss drop  : {dpo_loss_drop:+.4f}')\n\nratio_dpo = pref_ratio(theta_tok)\npref_ratio_change = ratio_dpo - ratio_ref\nprint(f'mean log[pi(y_w)/pi(y_l)] under pi_theta (DPO): {ratio_dpo:+.4f}')\nprint(f'preference-ratio change (DPO - SFT) : {pref_ratio_change:+.4f}')\nassert pref_ratio_change > 0, 'DPO should increase the preference ratio toward y_w'\npi_dpo_tok = theta_tok.copy()\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ },
+ {
+  "cell_type": "markdown",
+  "metadata": {},
+  "source": [
+   "## Takeaways\n\n- **SFT** is just MLE on a curated (prompt, response) corpus with prompt-token loss masked. It produces $\\pi_{\\mathrm{ref}}$, the initialization for everything that follows.\n- **PPO** maximizes expected reward minus a KL penalty via a clipped policy-gradient surrogate; it requires a separately-trained Bradley-Terry reward model and on-policy sampling.\n- **GRPO** drops the value head: replace $\\hat A$ with a group-normalized empirical advantage. Cheaper, used by DeepSeek-R1.\n- **DPO** solves the KL-regularized RLHF problem in closed form, inverts $r$, and pushes through Bradley-Terry. The partition function cancels, leaving a simple supervised-style loss on $(x, y_w, y_l)$ triples that requires no reward model and no on-policy sampling.\n- All three tilt the policy toward preferred completions while the KL leash to $\\pi_{\\mathrm{ref}}$ preserves the capabilities laid down during pre-training (Chapter 27).\n"
+  ]
+ },
+ {
+  "cell_type": "code",
+  "metadata": {},
+  "source": [
+   "# Held-out prompt comparison: pre-train vs SFT vs DPO\nheld_out = 'the cat '\ncandidates = ['sat on the mat. ', 'fly in the sky. ', 'a pet. ']\n\ndef best_continuation(p_tok):\n    return max(candidates, key=lambda c: sequence_logprob(held_out, c, p_tok))\n\ndef report(name, p_tok):\n    scores = {c: sequence_logprob(held_out, c, p_tok) for c in candidates}\n    best   = max(scores, key=scores.get)\n    print(f'  [{name:>8s}] best continuation: {best!r}')\n    for c, s in scores.items():\n        print(f'      logp({c!r:25s}) = {s:+.3f}')\n\n# Reset to base for a clean comparison\nparams['tok'] = pi_base_tok\nprint(f'Held-out prompt: {held_out!r}')\nreport('pre-train', pi_base_tok)\nreport('SFT',       pi_ref_tok)\nreport('DPO',       pi_dpo_tok)\n\nprint('\\nSummary')\nprint(f'  SFT loss drop          : {sft_loss_drop:+.4f}')\nprint(f'  RM  loss drop          : {rm_loss_drop:+.4f}')\nprint(f'  DPO loss drop          : {dpo_loss_drop:+.4f}')\nprint(f'  pref-ratio change      : {pref_ratio_change:+.4f}  (DPO > SFT means y_w more preferred)')\n"
+  ],
+  "execution_count": null,
+  "outputs": []
+ }
+]

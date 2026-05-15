@@ -1,0 +1,113 @@
+\section*{Motivation}
+
+Pre-training (Chapter~27) yields a base policy $\pi_{\mathrm{base}}$ optimized solely to assign high probability to next-token sequences from a corpus. Such a model is fluent but neither helpful nor safe. \emph{Post-training} converts $\pi_{\mathrm{base}}$ into an instruction-following policy aligned with human preferences. We treat the three dominant approaches: supervised fine-tuning (SFT), reinforcement learning from human feedback (RLHF) with PPO/GRPO, and direct preference optimization (DPO). The DPO derivation --- solving the KL-regularized RLHF objective in closed form and inverting the Bradley--Terry model --- is the centerpiece.
+
+\section*{Definitions}
+
+\begin{definition}[Supervised fine-tuning]
+Given $\mathcal{D}_{\mathrm{SFT}}=\{(x_i,y_i)\}$ of (prompt, response) pairs, continue training $\pi_{\mathrm{base}}$ with the next-token loss of Chapter~25, masking the prompt so the loss only fires on the response:
+\[
+\mathcal{L}_{\mathrm{SFT}}(\theta) = -\mathbb{E}_{(x,y)\sim\mathcal{D}_{\mathrm{SFT}}}\sum_{t=1}^{|y|}\log\pi_\theta(y_t\mid x,y_{<t}).
+\]
+The result is the \emph{reference model} $\pi_{\mathrm{ref}}:=\pi_{\mathrm{SFT}}$. This is MLE (Chapter~12) on the conditional response distribution.
+\end{definition}
+
+\begin{definition}[Reward model and Bradley--Terry]
+A scalar $r_\phi:(x,y)\to\mathbb{R}$ trained on preference triples $(x,y_w,y_l)$ via the Bradley--Terry (1952) likelihood
+\[
+\mathbb{P}(y_w\succ y_l\mid x) = \sigma\!\big(r_\phi(x,y_w)-r_\phi(x,y_l)\big),\quad
+\ell_{\mathrm{RM}} = -\log\sigma\!\big(r_\phi(x,y_w)-r_\phi(x,y_l)\big).
+\]
+\end{definition}
+
+\begin{definition}[RLHF objective; Christiano et al.\ 2017, Ouyang et al.\ 2022]
+\[
+\mathcal{J}(\theta) = \mathbb{E}_{x\sim\mathcal{D}}\,\mathbb{E}_{y\sim\pi_\theta(\cdot\mid x)}\!\big[r_\phi(x,y)\big] - \beta\,D_{\mathrm{KL}}\!\big(\pi_\theta(\cdot\mid x)\,\|\,\pi_{\mathrm{ref}}(\cdot\mid x)\big),\qquad \beta>0.
+\]
+The KL leash (Chapter~11) prevents $\pi_\theta$ from drifting far from the SFT initialization.
+\end{definition}
+
+\begin{definition}[PPO clipped surrogate; Schulman et al.\ 2017]
+With importance ratio $\rho_t(\theta)=\pi_\theta(a_t\mid s_t)/\pi_{\mathrm{old}}(a_t\mid s_t)$ and advantage $\hat A_t$,
+\[
+\mathcal{L}^{\mathrm{PPO}}(\theta) = \mathbb{E}\!\Big[\min\!\big(\rho_t(\theta)\hat A_t,\,\mathrm{clip}(\rho_t(\theta),1-\varepsilon,1+\varepsilon)\hat A_t\big)\Big].
+\]
+\end{definition}
+
+\begin{definition}[GRPO; DeepSeek 2024]
+Drop the value network. Sample $G$ responses $\{y^{(i)}\}_{i=1}^G$ per prompt $x$, score each with $r_\phi$, and form the group-normalized advantage $\hat A^{(i)} = (r^{(i)}-\mu_g)/(\sigma_g+\epsilon)$ with $\mu_g,\sigma_g$ the empirical mean/std over the $G$ samples.
+\end{definition}
+
+\begin{definition}[DPO; Rafailov et al.\ 2023]
+\[
+\mathcal{L}_{\mathrm{DPO}}(\theta) = -\mathbb{E}_{(x,y_w,y_l)}\!\left[\log\sigma\!\left(\beta\log\frac{\pi_\theta(y_w\mid x)}{\pi_{\mathrm{ref}}(y_w\mid x)} - \beta\log\frac{\pi_\theta(y_l\mid x)}{\pi_{\mathrm{ref}}(y_l\mid x)}\right)\right].
+\]
+\end{definition}
+
+\section*{Theorems}
+
+\begin{theorem}[DPO derivation --- central result]
+Fix a reward $r$ and a reference policy $\pi_{\mathrm{ref}}$ with full support. The unique maximizer of
+$\mathcal{J}_x(\pi)=\mathbb{E}_{y\sim\pi}[r(x,y)]-\beta\,D_{\mathrm{KL}}(\pi\|\pi_{\mathrm{ref}})$
+over distributions $\pi(\cdot\mid x)$ on $\mathcal{V}^*$ is
+\[
+\pi^*(y\mid x) = \frac{1}{Z(x)}\,\pi_{\mathrm{ref}}(y\mid x)\,\exp\!\big(r(x,y)/\beta\big),\qquad Z(x)=\sum_y\pi_{\mathrm{ref}}(y\mid x)\exp(r(x,y)/\beta).
+\]
+Inverting and substituting into the Bradley--Terry log-likelihood yields the DPO loss; the $\log Z(x)$ terms cancel.
+\end{theorem}
+
+\begin{proof}
+Write the per-prompt objective as
+\begin{align*}
+\mathcal{J}_x(\pi)
+&= \sum_y\pi(y)r(x,y) - \beta\sum_y\pi(y)\log\frac{\pi(y)}{\pi_{\mathrm{ref}}(y)} \\
+&= -\beta\sum_y\pi(y)\log\frac{\pi(y)}{\pi_{\mathrm{ref}}(y)\exp(r(x,y)/\beta)}.
+\end{align*}
+Define the unnormalized measure $q(y):=\pi_{\mathrm{ref}}(y)\exp(r(x,y)/\beta)$ with $Z(x):=\sum_y q(y)$. Then
+\[
+\mathcal{J}_x(\pi) = -\beta\,D_{\mathrm{KL}}\!\big(\pi\,\|\,Z(x)^{-1}q\big) + \beta\log Z(x).
+\]
+By Gibbs' inequality (Chapter~11), $D_{\mathrm{KL}}\geq 0$ with equality iff $\pi=Z^{-1}q$, so the unique maximizer is
+$\pi^*(y\mid x) = Z(x)^{-1}\pi_{\mathrm{ref}}(y\mid x)\exp(r(x,y)/\beta)$.
+
+Solving for the reward gives
+$r(x,y) = \beta\log\!\dfrac{\pi^*(y\mid x)}{\pi_{\mathrm{ref}}(y\mid x)} + \beta\log Z(x).$
+For a preference triple $(x,y_w,y_l)$, substitute into the Bradley--Terry log-likelihood:
+\begin{align*}
+\log\sigma\!\big(r(x,y_w)-r(x,y_l)\big)
+&= \log\sigma\!\Bigg(\beta\log\frac{\pi^*(y_w|x)}{\pi_{\mathrm{ref}}(y_w|x)} - \beta\log\frac{\pi^*(y_l|x)}{\pi_{\mathrm{ref}}(y_l|x)} \\
+&\hspace{6em}+\beta\log Z(x)-\beta\log Z(x)\Bigg).
+\end{align*}
+The two $\beta\log Z(x)$ terms cancel --- this is the cancellation that eliminates the intractable partition function. Replacing $\pi^*$ with $\pi_\theta$ and negating the expectation yields $\mathcal{L}_{\mathrm{DPO}}(\theta)$.
+\end{proof}
+
+\begin{proposition}[PPO trust-region motivation]
+Let $\pi_{\mathrm{old}}$ be the policy before update and $\hat A$ an advantage estimator. The unclipped surrogate $L(\theta)=\mathbb{E}[\rho_t(\theta)\hat A_t]$ is a first-order approximation to the policy improvement $J(\pi_\theta)-J(\pi_{\mathrm{old}})$ in a neighborhood of $\pi_{\mathrm{old}}$ (Kakade--Langford 2002). The clip operator caps $|\rho_t-1|\le\varepsilon$ on every step where the unclipped objective would push the policy out of the trust region, yielding a pessimistic lower bound on the surrogate.
+\end{proposition}
+
+\begin{remark}
+A full proof (Achiam et al.\ 2017) bounds the total-variation distance between successive policies. PPO's clip is a cheap surrogate for TRPO's KL constraint; empirically it preserves monotonic improvement in nearly all settings.
+\end{remark}
+
+\begin{theorem}[GRPO advantage is unbiased]
+Let $r^{(1)},\dots,r^{(G)}$ be rewards of $G$ i.i.d.\ samples from $\pi_{\mathrm{old}}(\cdot\mid x)$ and $\hat A^{(i)}=(r^{(i)}-\mu_g)/(\sigma_g+\epsilon)$. Then $\mu_g$ acts as a (nearly) unbiased baseline: subtracting it from $r^{(i)}$ does not change the expected REINFORCE gradient.
+\end{theorem}
+
+\begin{proof}
+The REINFORCE estimator with baseline $b$ is $\hat g=\sum_i(r^{(i)}-b)\nabla_\theta\log\pi_\theta(y^{(i)}\mid x)$. The baseline lemma:
+\[
+\mathbb{E}_{y\sim\pi}\!\big[b\,\nabla_\theta\log\pi(y)\big]
+= b\sum_y\nabla_\theta\pi(y)
+= b\,\nabla_\theta\!\sum_y\pi(y)
+= b\,\nabla_\theta 1 = 0
+\]
+for any $b$ independent of $y$. The empirical mean $\mu_g$ is not strictly independent of the samples, but conditional on a single $y^{(j)}$, the leave-one-out mean over the other $G-1$ samples is independent of $y^{(j)}$; standard control-variate arguments give bias $O(1/G)$, vanishing as $G\to\infty$. Division by $\sigma_g$ rescales the loss by a data-dependent constant absorbed into the learning rate.
+\end{proof}
+
+\section*{Code sketch}
+
+We continue the tiny GPT of Chapter~27. The pipeline: (1) brief pre-train on a toy corpus to fix $\pi_{\mathrm{base}}$; (2) SFT on a handful of (prompt, response) pairs to obtain $\pi_{\mathrm{ref}}$; (3) train a Bradley--Terry reward head on $\sim 5$ preference triples and verify it ranks $y_w > y_l$; (4) compute one PPO clipped surrogate batch as a sanity check; (5) run DPO for a few hundred steps and verify $\pi_\theta(y_w\mid x)/\pi_\theta(y_l\mid x) > \pi_{\mathrm{ref}}(y_w\mid x)/\pi_{\mathrm{ref}}(y_l\mid x)$.
+
+\section*{Connection to LLMs}
+
+InstructGPT (Ouyang et al.\ 2022) introduced the SFT $\to$ RM $\to$ PPO recipe; GPT-3.5/4, Claude 1/2/3, Llama-2-Chat, and Llama-3-Instruct all use a variant. DeepSeek-R1 (2024) replaced PPO with GRPO, dropping the critic entirely. Zephyr, T\"ulu, and most open-weight chat models from late 2023 onward use DPO (or its variants IPO, KTO, ORPO) because the closed-form derivation eliminates reward-model training, on-policy sampling, and credit assignment over long sequences. The KL leash to $\pi_{\mathrm{ref}}$ is what prevents post-training from destroying the capabilities laid down in pre-training (Chapter~27): post-training \emph{reshapes} a small region of the policy manifold around the SFT initialization rather than learning a new model from scratch.

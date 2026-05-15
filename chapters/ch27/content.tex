@@ -1,0 +1,101 @@
+\subsection*{Motivation}
+
+Chapters~14, 23, 25, and 26 gave us all the pieces in isolation: AdamW, the transformer block, next-token-prediction (NTP) loss with a causal mask, and a tokenizer. This chapter assembles them into the \emph{pre-training pipeline} used by every modern decoder-only language model -- GPT-2/3/4, Llama, Mistral. The recipe is short enough to fit on a postcard:
+\[
+\text{corpus} \xrightarrow{\tau} \text{ids} \to (B,T) \to \text{transformer} \to \text{logits} \xrightarrow{\mathrm{CE}} L \xrightarrow{\nabla} g \xrightarrow{\text{clip}+\mathrm{AdamW}} \theta_{t+1}.
+\]
+Three engineering details -- learning-rate warmup, cosine decay, and gradient clipping -- separate ``diverges in 200 steps'' from ``trains stably for $10^{12}$ tokens.''
+
+\subsection*{Definitions}
+
+\begin{definition}[Pre-training pipeline]
+Given a corpus $\mathcal{C}$, tokenizer $\tau:\mathcal{C}\to\{1,\dots,V\}^*$, and a causal LM $p_\theta(x_t\mid x_{<t})$, \emph{pre-training} consists of: (i) encoding $\tau(\mathcal{C})$ into $x_1,\dots,x_N$; (ii) at each step $t$, sampling a batch of $B$ context windows of length $T$ and computing
+\[
+L_t = -\frac{1}{BT}\sum_{b,i}\log p_\theta(x^{(b)}_{i+1}\mid x^{(b)}_{\le i});
+\]
+(iii) backpropagating, clipping the global gradient norm, and taking an AdamW step under schedule $\eta_t$.
+\end{definition}
+
+\begin{definition}[Linear warmup]
+For horizon $W\in\mathbb{N}$ and peak $\eta_{\max}$,
+\[
+\eta_t^{\text{warm}} = \eta_{\max}\cdot\min\!\left(1,\tfrac{t}{W}\right).
+\]
+\end{definition}
+
+\begin{definition}[Cosine decay]
+For total horizon $T$, floor $\eta_{\min}$, and warmup $W$,
+\[
+\eta_t \;=\; \eta_{\min} + \tfrac{1}{2}(\eta_{\max}-\eta_{\min})\!\left(1 + \cos\!\left(\pi\cdot\tfrac{t-W}{T-W}\right)\right), \quad t\in[W,T].
+\]
+The combined schedule ramps linearly to $\eta_{\max}$ on $[0,W]$ and cosines down to $\eta_{\min}$ on $[W,T]$.
+\end{definition}
+
+\begin{definition}[Global-norm gradient clipping]
+Given $g=\nabla_\theta L\in\mathbb{R}^P$ and threshold $c>0$,
+\[
+\widetilde{g} \;=\; g\cdot\min\!\left(1,\tfrac{c}{\|g\|_2}\right).
+\]
+\end{definition}
+
+\begin{definition}[Mixed-precision (bf16) training]
+Forward/backward run in bf16 (8-bit exponent, 7-bit mantissa); the AdamW \emph{master} weights and moments stay in fp32. Activation memory $\approx \tfrac{1}{2}$, throughput typically $2\times$--$3\times$ on tensor cores.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Warmup stabilizes large early gradients]
+Let $L$ be $\beta$-smooth. The descent lemma gives
+\[
+L(\theta_{t+1}) \le L(\theta_t) - \eta_t\|\nabla L_t\|^2 + \tfrac{\beta}{2}\eta_t^2\|\nabla L_t\|^2.
+\]
+At initialization $\beta$ is effectively unbounded along directions where pre-norm activations have not equilibrated; thus the second-order term dominates whenever $\eta_t > 2/\beta$. Ramping $\eta_t$ from $0$ keeps the second-order penalty controlled. Once LayerNorm scales and Adam's $v_t$ stabilize, $\beta$ shrinks and a larger $\eta_{\max}$ becomes safe.
+\end{theorem}
+
+\begin{remark}
+RAdam (Liu et al.\ 2020) shows that Adam's variance estimate $\hat v_t$ has high variance for small $t$; warmup is essentially a poor man's variance correction.
+\end{remark}
+
+\begin{theorem}[Cosine decay shrinks the noise ball]
+Near a minimum $\theta^\star$, a quadratic approximation $L(\theta)\approx\tfrac{1}{2}(\theta-\theta^\star)^\top H(\theta-\theta^\star)$ implies the SGD iterate variance scales as $\Theta(\eta\sigma^2)$. Decaying $\eta_t\to\eta_{\min}$ shrinks the noise ball, allowing convergence to a sharper minimum.
+\end{theorem}
+
+\begin{remark}
+Empirically (Smith 2017, 1cycle; Loshchilov \& Hutter SGDR), cosine outperforms step- and exponential-decay across vision and language. Cosine in particular keeps $\eta$ near $\eta_{\max}$ during most of training (when exploration matters) and only collapses near the end.
+\end{remark}
+
+\begin{theorem}[Clipping preserves a per-step descent guarantee]
+Suppose $L$ is $\beta$-smooth and we clip the gradient to norm $\le c$. Then the AdamW step at rate $\eta$ satisfies
+\[
+\mathbb{E}[L(\theta_{t+1})] \le L(\theta_t) \;-\; \eta\,\mathbb{E}\!\left[\frac{\widetilde g_t^{\top}\nabla L(\theta_t)}{\sqrt{\hat v_t}+\epsilon}\right] \;+\; \frac{\beta\eta^2 c^2}{2}.
+\]
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Apply $\beta$-smoothness to $\theta_{t+1}=\theta_t-\eta m_t/(\sqrt{\hat v_t}+\epsilon)$; the second-order term is $O(\eta^2\|m_t\|^2)$, and $\|m_t\|\le c$ by EMA + clipping. The bound holds uniformly over batches, so a single bad gradient can no longer destroy the run.
+\end{proof}
+
+\begin{remark}[Chinchilla compute-optimal scaling]
+Hoffmann et al.\ (2022): for fixed compute $C\approx 6ND$ FLOPs (parameters $N$, tokens $D$), the loss-minimizing allocation satisfies $N^\star\propto C^{1/2}$ and $D^\star\propto C^{1/2}$. Scale parameters and data \emph{proportionally}. GPT-3 (175B/300B) was undertrained; Chinchilla (70B/1.4T) used the same compute and matched it. This is the rule that determines $T_{\text{train}}$ once $N$ and the compute budget are fixed.
+\end{remark}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+def lr_schedule(t, W, T, eta_max, eta_min):
+    if t < W:
+        return eta_max * t / W
+    p = (t - W) / (T - W)
+    return eta_min + 0.5*(eta_max-eta_min)*(1 + math.cos(math.pi*p))
+
+def clip_global_norm(grads, c=1.0):
+    flat = np.concatenate([g.ravel() for g in grads])
+    norm = np.linalg.norm(flat)
+    return [g * min(1.0, c / (norm + 1e-12)) for g in grads]
+\end{verbatim}
+
+The notebook implements forward/backward of a 2-layer tiny GPT in pure numpy, drives it with this schedule + clip, and trains to a clearly sub-trivial loss in under 5 minutes on a CPU.
+
+\subsection*{Connection to LLMs}
+
+This chapter \emph{is} the recipe. GPT-2 used exactly this pipeline (warmup $\approx$ 2K steps, cosine to $0.1\eta_{\max}$, clip $=1.0$, AdamW $\beta_2=0.95$). Llama-2 used the same pipeline with longer $W$, longer $T$, and bf16 mixed precision. From ``tiny GPT in this notebook'' to ``GPT-4 on a supercluster,'' only \emph{scale} changes: $V$ from $30$ to $10^5$, $T_{\text{ctx}}$ from $16$ to $10^4$--$10^5$, $d$ from $32$ to $10^4$, $N$ from $10^4$ to $10^{12}$, $D$ from $10^3$ to $10^{13}$ tokens. The control flow \texttt{for step in range(T): batch -> forward -> loss -> backward -> clip -> adamw\_step} is byte-identical.

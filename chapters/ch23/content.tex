@@ -1,0 +1,115 @@
+\subsection*{Motivation}
+
+A single attention head (Chapter~22) is a beautiful linear-algebraic object, but a transformer is not one head: it is a stack of dozens to hundreds of nearly identical \emph{blocks}. Two empirical facts dominate the design of those blocks. First, deep stacks of pure compositions $f_L \circ \cdots \circ f_1$ suffer vanishing or exploding Jacobians (we proved a strict version of this for RNNs in Chapter~20). Second, the activations between layers drift in scale and mean unless we actively re-normalize. The transformer block solves both problems by wrapping every learned sublayer in a residual connection and a normalization layer, then alternating an attention sublayer with a position-wise feedforward MLP. This chapter pins down the algebra and proves the gradient-flow guarantee that makes deep transformer stacks trainable end-to-end.
+
+\subsection*{Definitions}
+
+\begin{definition}[Residual connection]
+Given a map $F : \mathbb{R}^d \to \mathbb{R}^d$, the \emph{residual} (or \emph{skip}) wrapper is $\mathrm{Res}_F(x) = F(x) + x$.
+\end{definition}
+
+\begin{definition}[LayerNorm; Ba--Kiros--Hinton 2016]
+For $x \in \mathbb{R}^d$ let $\mu = \tfrac1d \sum_i x_i$ and $\sigma^2 = \tfrac1d \sum_i (x_i - \mu)^2$. Then
+\[
+  \mathrm{LN}(x) \;=\; \gamma \odot \frac{x - \mu \mathbf{1}}{\sqrt{\sigma^2 + \varepsilon}} + \beta,
+  \qquad \gamma, \beta \in \mathbb{R}^d.
+\]
+\end{definition}
+
+\begin{definition}[RMSNorm; Zhang--Sennrich 2019]
+With $r(x)^2 = \tfrac1d \sum_i x_i^2$,
+\[
+  \mathrm{RMSN}(x) \;=\; \gamma \odot \frac{x}{\sqrt{r(x)^2 + \varepsilon}}.
+\]
+RMSN drops mean-subtraction and the $\beta$ shift, saving roughly $7\%$ of the per-token FLOPs of LN.
+\end{definition}
+
+\begin{definition}[Position-wise FFN]
+Two affine maps separated by a pointwise nonlinearity $\sigma$ (Chapter~16):
+\[
+  \mathrm{FFN}(x) \;=\; W_2 \,\sigma(W_1 x + b_1) + b_2,
+  \qquad W_1 \in \mathbb{R}^{d_{\mathrm{ff}} \times d}, \;\; W_2 \in \mathbb{R}^{d \times d_{\mathrm{ff}}},
+\]
+typically $d_{\mathrm{ff}} = 4d$. This is exactly the one-hidden-layer MLP of Chapter~15, applied independently to each token position.
+\end{definition}
+
+\begin{definition}[Pre-norm transformer block]
+Given multi-head self-attention $\mathrm{MHA}$ (Chapter~22) and FFN as above, the modern block (GPT-2 onward) is
+\[
+  z = x + \mathrm{MHA}\bigl(\mathrm{LN}(x)\bigr),
+  \qquad
+  y = z + \mathrm{FFN}\bigl(\mathrm{LN}(z)\bigr).
+\]
+The original Vaswani 2017 \emph{post-norm} block applied LN \emph{after} the residual sum: $z = \mathrm{LN}(x + \mathrm{MHA}(x))$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Residual gradient identity]
+\label{thm:res}
+Let $y = F(x) + x$ with $F : \mathbb{R}^d \to \mathbb{R}^d$ differentiable. Then $\partial y / \partial x = J_F(x) + I$. Iterating across $L$ residual blocks $x_{\ell+1} = x_\ell + F^{(\ell)}(x_\ell)$,
+\[
+  \frac{\partial x_L}{\partial x_0} \;=\; \prod_{\ell = L-1}^{0} \bigl(I + J_{F^{(\ell)}}(x_\ell)\bigr).
+\]
+\end{theorem}
+
+\begin{proof}
+Direct from the chain rule (Chapter~18): $\partial x_{\ell+1}/\partial x_\ell = I + J_{F^{(\ell)}}(x_\ell)$, and Jacobians compose by left-multiplication.
+\end{proof}
+
+\begin{corollary}[Non-vanishing gradient flow]
+Suppose $\|J_{F^{(\ell)}}\|_2 \le \kappa < 1$ uniformly. Without residuals, $\|\prod_\ell J_{F^{(\ell)}}\|_2 \le \kappa^L$, the exponential decay of Chapter~20's RNN bound. With residuals, expanding the product
+\[
+  \frac{\partial x_L}{\partial x_0} \;=\; I + \sum_\ell J_{F^{(\ell)}} + \sum_{\ell < m} J_{F^{(m)}} J_{F^{(\ell)}} + \cdots
+\]
+gives $\|\partial x_L/\partial x_0\|_2 \ge 1 - L\kappa - \binom{L}{2}\kappa^2 - \cdots$, bounded away from zero for any depth provided $\kappa$ is small enough. The identity term \emph{guarantees} a non-vanishing path from output to input.
+\end{corollary}
+
+\begin{theorem}[LN invariances and Jacobian]
+\label{thm:ln}
+Set $\gamma = \mathbf 1$, $\beta = 0$, $\varepsilon = 0$ to isolate the normalizer. For any $\alpha > 0$ and $\beta_0 \in \mathbb{R}$, $\mathrm{LN}(\alpha x + \beta_0 \mathbf{1}) = \mathrm{LN}(x)$.
+\end{theorem}
+
+\begin{proof}
+Let $x' = \alpha x + \beta_0 \mathbf{1}$. Then $\mu' = \alpha \mu + \beta_0$ and $\sigma'^2 = \tfrac1d \sum_i (\alpha x_i + \beta_0 - \alpha \mu - \beta_0)^2 = \alpha^2 \sigma^2$. Hence
+\[
+  \frac{x' - \mu' \mathbf{1}}{\sigma'} \;=\; \frac{\alpha (x - \mu \mathbf{1})}{\alpha \sigma} \;=\; \frac{x - \mu \mathbf{1}}{\sigma}. \qedhere
+\]
+\end{proof}
+
+Writing $\hat x = (x - \mu \mathbf{1})/\sigma$, $\partial \mu/\partial x_j = 1/d$, and $\partial \sigma / \partial x_j = (x_j - \mu)/(d \sigma) = \hat x_j / d$, the chain rule yields
+\[
+  \boxed{\;\frac{\partial \hat x_i}{\partial x_j} \;=\; \frac{1}{\sigma}\!\left(\delta_{ij} - \frac{1}{d} - \frac{1}{d}\hat x_i \hat x_j\right)\;}
+\]
+The two subtracted terms project out the constant ($\mathbf 1$) and $\hat x$ directions --- exactly the directions LN is invariant to. The Jacobian is therefore rank $d - 2$, with kernel $\mathrm{span}\{\mathbf{1}, x - \mu \mathbf{1}\}$.
+
+\begin{proposition}[RMSN $\approx$ LN on centered data]
+If $\mu(x) = 0$ then $\mathrm{LN}(x) = \mathrm{RMSN}(x)$ (the LN $\beta$ is absorbed into a downstream bias). For arbitrary $x$,
+\[
+  \mathrm{RMSN}(x) - \mathrm{LN}(x) \;=\; \gamma \odot \frac{\mu(x)\,\mathbf 1}{\sqrt{r(x)^2 + \varepsilon}} + O\!\left(\frac{\mu(x)^2}{r(x)^2}\right).
+\]
+\end{proposition}
+
+\begin{proof}
+When $\mu = 0$, $r(x)^2 = \sigma(x)^2$ and $x - \mu \mathbf{1} = x$, so the two formulas coincide. The general expansion follows by writing $r^2 = \sigma^2 + \mu^2$ and Taylor-expanding the inverse square root.
+\end{proof}
+
+The empirical observation behind RMSN, verified in our code cells, is that after a few transformer layers the residual stream has near-zero mean, so dropping centering costs essentially no quality.
+
+\begin{remark}[Pre-norm vs.\ post-norm gradient scale]
+With He/Xavier initialization (Chapter~17), each sublayer output has the same variance as its input. In a \emph{post-norm} stack the residual sum $x + F(x)$ has variance $2\,\mathrm{Var}(x)$, which LN immediately rescales to $\mathrm{Var}(x)$, but the gradient picks up a factor of $1/\sqrt 2$ per block, so after $L$ blocks the gradient at the input scales like $2^{-L/2}$, requiring careful warmup. In a \emph{pre-norm} stack the residual stream itself is never rescaled; only the input \emph{to} each sublayer is normalized. The end-to-end Jacobian is Theorem~\ref{thm:res}'s $\prod(I + J_F)$ with each $J_F$ acting on a normalized input, so the gradient norm at $x_0$ remains $\Theta(1)$ independent of $L$. This is why every model from GPT-2 onward uses pre-norm.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The companion notebook (i) implements one full pre-norm block in numpy and verifies shape preservation; (ii) stacks 20 residual blocks against 20 plain blocks and measures backpropagated gradient norms by finite differences; (iii) checks LN invariance under $x \mapsto \alpha x + \beta_0 \mathbf{1}$ across many random $(\alpha, \beta_0)$; (iv) compares LN vs.\ RMSN on centered and uncentered inputs.
+
+\subsection*{Connection to LLMs}
+
+Every layer of every modern decoder LLM is a small variation of the block above. GPT-2/3/4 use pre-LN with GELU FFN. Llama, Mistral, and Qwen swap LN for RMSN, GELU for SwiGLU (Chapter~16), and MHA for grouped-query attention (Chapter~24); Llama also uses RoPE positional encoding (Chapter~25) inside the attention sublayer. The block remains
+\[
+  z = x + \mathrm{Sublayer}_1(\mathrm{Norm}(x)),
+  \qquad
+  y = z + \mathrm{Sublayer}_2(\mathrm{Norm}(z)).
+\]
+Stacking 32--120 such blocks, plus the embedding (Chapter~21), the (often tied) unembedding, and a final norm before the LM head, gives the entire forward pass of a frontier-scale language model. The training-stability argument of Theorem~\ref{thm:res} is precisely what makes the trillion-parameter regime (Chapters~27, 28) reachable at all.

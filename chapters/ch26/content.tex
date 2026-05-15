@@ -1,0 +1,110 @@
+\subsection*{Motivation}
+
+A language model assigns probabilities over sequences drawn from a \emph{finite} token vocabulary $\mathcal{V}$. Recall from Chapter~1 that $\mathcal{V}$ is a finite set; the embedding matrix of Chapter~19 has exactly one row per element of $\mathcal{V}$. Two extremes for choosing $\mathcal{V}$ are unsatisfactory:
+
+\begin{itemize}
+\item \textbf{Word-level vocabulary.} Treat each whitespace-delimited string as a token. Then $\mathcal{V}$ must grow without bound to cover proper nouns, typos, code identifiers, URLs, and morphological variants, and any unseen word is mapped to a single \texttt{<unk>} symbol. The OOV problem is unbounded.
+\item \textbf{Character-level vocabulary.} Take $\mathcal{V}$ to be the 256 raw bytes. Then $|\mathcal{V}|$ is small and OOV is impossible, but sequences become extremely long, and the quadratic cost of self-attention (Chapter~25) bites hard.
+\end{itemize}
+
+\textbf{Subword tokenization} is the middle ground: $\mathcal{V}$ is a learned set of byte strings where common substrings (\texttt{the}, \texttt{ing}, \texttt{\_function}) are atomic tokens and rare strings fall back to bytes. We study the dominant algorithm: \textbf{byte-pair encoding} (BPE), introduced as a compression heuristic by Gage (1994) and adapted to neural machine translation by Sennrich, Haddow \& Birch (2016).
+
+\subsection*{Definitions}
+
+Fix a finite base alphabet $\Sigma$; for byte-level BPE, $\Sigma = \{0, 1, \dots, 255\}$. A \emph{corpus} is a finite multiset $\mathcal{C} \subset \Sigma^*$ of strings, with multiplicity $c(s) \in \mathbb{Z}_{>0}$.
+
+\begin{definition}[Vocabulary and segmentation]
+A \emph{vocabulary} is a finite set $\mathcal{V} \subset \Sigma^+$ with $\Sigma \subseteq \mathcal{V}$. A \emph{segmentation} of $s \in \Sigma^*$ under $\mathcal{V}$ is a tuple $(t_1, \dots, t_k) \in \mathcal{V}^k$ with $t_1 t_2 \cdots t_k = s$ (concatenation).
+\end{definition}
+
+\begin{definition}[Merge rule]
+A \emph{merge rule} is an ordered pair $(a, b) \in \mathcal{V} \times \mathcal{V}$. Applying it to a sequence $(t_1, \dots, t_k)$ replaces every adjacent occurrence of $(a, b)$ with the single token $ab$, scanning left to right and non-overlappingly.
+\end{definition}
+
+\begin{definition}[BPE training]
+Given $\mathcal{C}$ and a budget $M \in \mathbb{Z}_{\geq 0}$:
+\begin{enumerate}
+\item Initialize $\mathcal{V}_0 = \Sigma$ and segment each $s \in \mathcal{C}$ as the sequence of its bytes.
+\item For $m = 1, \dots, M$, count adjacent pair frequencies
+\[
+f_m(a,b) \;=\; \sum_{s \in \mathcal{C}} c(s) \cdot \#\{\text{occurrences of }(a,b)\text{ in }\mathrm{seg}_{m-1}(s)\}.
+\]
+Pick $(a^\star, b^\star) = \arg\max_{(a,b)} f_m(a,b)$ (ties broken by a fixed total order on $\mathcal{V}^2$). Set $\mathcal{V}_m = \mathcal{V}_{m-1} \cup \{a^\star b^\star\}$ and apply the rule everywhere in the corpus.
+\end{enumerate}
+The output is the pair $(\mathcal{V}_M,\, (r_1, \dots, r_M))$ with $r_m = (a^\star, b^\star)$.
+\end{definition}
+
+\begin{definition}[BPE encoding/decoding]
+Given $(r_1, \dots, r_M)$, encode $s \in \Sigma^*$ by: start from the byte sequence of $s$; repeatedly apply the smallest-rank applicable merge $r_i$; halt when no rule applies. Decoding is concatenation: $\mathrm{dec}(t_1, \dots, t_k) = t_1 t_2 \cdots t_k$.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Determinism of BPE]
+Given a fixed merge list $(r_1, \dots, r_M)$ and a fixed tie-breaking rule, the encoder is a total function $\mathrm{enc}: \Sigma^* \to \mathcal{V}^*$.
+\end{theorem}
+
+\begin{proof}
+Each merge replaces two adjacent tokens by one, strictly reducing sequence length by~1. Sequence length is a well-founded measure into $\mathbb{N}$; the inner loop therefore terminates after at most $|s|-1$ steps. At each step the smallest-rank applicable rule is unique (rules are an ordered list with fixed tie-breaking), so the choice is deterministic. \qedhere
+\end{proof}
+
+\begin{theorem}[Decoding inverts encoding]
+For all $s \in \Sigma^*$, $\;\mathrm{dec}(\mathrm{enc}(s)) = s$.
+\end{theorem}
+
+\begin{proof}
+By induction on the merge sequence: every $t \in \mathcal{V}_m$ is a string in $\Sigma^+$, and a merge replaces $(a,b)$ by $ab$ — i.e.\ concatenation. Hence the concatenation $t_1 \cdots t_k$ is invariant under any sequence of merges starting from the byte sequence of $s$. \qedhere
+\end{proof}
+
+\begin{theorem}[Corpus-coverage monotonicity]
+Let
+\[
+L_m \;=\; \sum_{s \in \mathcal{C}} c(s) \cdot |\mathrm{seg}_m(s)|
+\]
+be the total token count of the corpus after $m$ training merges. Then $L_0 \geq L_1 \geq \cdots \geq L_M$, and $L_{m+1} < L_m$ whenever the chosen pair $r_{m+1}$ has positive frequency.
+\end{theorem}
+
+\begin{proof}
+Applying the merge $r_{m+1} = (a^\star, b^\star)$ replaces each non-overlapping occurrence of the adjacent pair with a single token, decreasing the length of each affected segmentation by exactly the number of occurrences. Summing over the corpus,
+\[
+L_{m+1} \;=\; L_m - f_{m+1}(a^\star, b^\star).
+\]
+Since $f_{m+1} \geq 0$, $L_{m+1} \leq L_m$, with strict decrease iff $f_{m+1}(a^\star, b^\star) > 0$. \qedhere
+\end{proof}
+
+\begin{proposition}[Vocabulary size bound]
+$|\mathcal{V}_M| \leq |\Sigma| + M$, with equality whenever every chosen pair produces a novel token (which holds in the byte-level case since each merge produces a string strictly longer than every $\sigma \in \Sigma$, and pairs are picked with positive count).
+\end{proposition}
+
+\begin{proof}
+By induction on $m$: $|\mathcal{V}_0| = |\Sigma|$, and $|\mathcal{V}_{m+1}| \leq |\mathcal{V}_m| + 1$. \qedhere
+\end{proof}
+
+\begin{remark}[Greedy vs.\ globally optimal]
+Among all vocabularies of size $|\Sigma| + M$, finding the one that minimizes the corpus token count $L$ is NP-hard: a reduction from \textsc{Set Cover} treats each candidate substring as a "set" of corpus positions it can cover, and the search for $M$ substrings minimizing residual length is a weighted set-cover variant. BPE is the \emph{greedy} approximation: at each step, take the merge with the largest immediate compression. There is no guarantee of global optimality; in practice BPE matches or beats more expensive alternatives on downstream perplexity.
+\end{remark}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+from collections import Counter
+
+def train_bpe(corpus, M):
+    seqs = [tuple(bytes(s, "utf-8")) for s in corpus]
+    merges = []
+    for _ in range(M):
+        pairs = Counter()
+        for seq in seqs:
+            pairs.update(zip(seq, seq[1:]))
+        if not pairs: break
+        best = max(pairs.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        merges.append(best)
+        seqs = [apply_merge(seq, best) for seq in seqs]
+    return merges
+\end{verbatim}
+
+A full runnable implementation, with training, encoding, decoding, and empirical verification of corpus-coverage monotonicity, lives in the chapter notebook.
+
+\subsection*{Connection to LLMs}
+
+The tokenizer is the \emph{interface} between raw bytes and the model. GPT-2 / 3 / 4 use byte-level BPE with $|\mathcal{V}| \approx 50{,}257$ (gpt2) up to $\approx 100{,}000$ (cl100k\_base). Llama uses SentencePiece BPE on Unicode with $\sim$32k vocab. Claude uses a custom BPE-like scheme. In every case, the chosen $\mathcal{V}$ fixes the row count of the embedding matrix $E \in \mathbb{R}^{|\mathcal{V}| \times d}$ from Chapter~19, and shapes everything downstream: the softmax cost in the LM head, the effective sequence length seen by attention, even what \emph{concepts} the model can express atomically. Chapter~27 explores tokenization pitfalls (numeric tokenization, multilinguality, "SolidGoldMagikarp"-style glitch tokens) that follow directly from BPE's greedy, frequency-driven design.

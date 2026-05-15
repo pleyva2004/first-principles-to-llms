@@ -1,0 +1,107 @@
+\subsection*{Motivation}
+
+Chapter~21 built a single attention head: a $T \times T$ soft-lookup linking every output position to every input position in $O(1)$ depth. A single head must compress \emph{every} relational pattern --- syntactic, semantic, positional --- into one softmax-weighted average over $V$. The Vaswani et al.~(2017) fix is \textbf{multi-head attention} (MHA): run $H$ heads in parallel on disjoint low-rank subspaces, concatenate, and re-project. We will prove that (i) MHA equals a single attention with block-diagonal projections, (ii) the parameter count is independent of $H$, and (iii) compute scales as $\Theta(T d^2 + T^2 d)$, with the $T^2 d$ term motivating the inference-time variants \textbf{multi-query} (MQA) and \textbf{grouped-query} (GQA) attention used by PaLM and Llama 2/3.
+
+\subsection*{Definitions}
+
+Let $X \in \mathbb{R}^{T \times d}$ with $d := d_{\mathrm{model}}$. Fix $H \mid d$ and set $d_k = d_v = d/H$. Write $\mathrm{Attn}(\cdot,\cdot,\cdot)$ for scaled dot-product attention (Chapter~21).
+
+\begin{definition}[Multi-head attention]
+\label{def:mha}
+For $h = 1, \dots, H$, fix
+\[
+W_Q^{(h)}, W_K^{(h)} \in \mathbb{R}^{d \times d_k}, \qquad W_V^{(h)} \in \mathbb{R}^{d \times d_v}, \qquad W_O \in \mathbb{R}^{H d_v \times d}.
+\]
+Define
+\[
+\mathrm{head}_h \;=\; \mathrm{Attn}\bigl(X W_Q^{(h)},\, X W_K^{(h)},\, X W_V^{(h)}\bigr) \;\in\; \mathbb{R}^{T \times d_v},
+\]
+\[
+\boxed{\;\mathrm{MHA}(X) \;=\; \mathrm{Concat}(\mathrm{head}_1,\dots,\mathrm{head}_H)\, W_O \;\in\; \mathbb{R}^{T \times d}.\;}
+\]
+\end{definition}
+
+\begin{definition}[Multi-query attention]
+All $H$ heads share a single $W_K, W_V$; only $W_Q^{(h)}$ varies per head. Hence the cached $K,V$ tensors are $H$ times smaller.
+\end{definition}
+
+\begin{definition}[Grouped-query attention]
+Partition the $H$ heads into $G$ groups, $G \mid H$. Heads within a group share $W_K, W_V$. MHA = $G = H$, MQA = $G = 1$. Llama 2/3 use $G \in \{4, 8\}$.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[MHA = block-structured single attention]
+\label{thm:block}
+Let $W_Q^{\mathrm{blk}} := [W_Q^{(1)} \mid \cdots \mid W_Q^{(H)}] \in \mathbb{R}^{d \times H d_k}$ be the horizontal concatenation of the per-head $Q$-projections, and similarly $W_K^{\mathrm{blk}}, W_V^{\mathrm{blk}}$. Set
+\[
+Q^{\mathrm{blk}} = X W_Q^{\mathrm{blk}}, \quad K^{\mathrm{blk}} = X W_K^{\mathrm{blk}}, \quad V^{\mathrm{blk}} = X W_V^{\mathrm{blk}} \;\in\; \mathbb{R}^{T \times H d_k}.
+\]
+Reshape each into $\mathbb{R}^{T \times H \times d_k}$ by splitting the last axis into $H$ blocks of width $d_k$. Then the per-head attention applied to slice $h$ of these reshaped tensors equals $\mathrm{head}_h$.
+\end{theorem}
+\begin{proof}
+By construction
+\[
+X W_Q^{\mathrm{blk}} \;=\; X \bigl[W_Q^{(1)} \mid \cdots \mid W_Q^{(H)}\bigr] \;=\; \bigl[X W_Q^{(1)} \mid \cdots \mid X W_Q^{(H)}\bigr],
+\]
+so the $h$-th block of width $d_k$ is exactly $X W_Q^{(h)} = Q^{(h)}$. The same holds for $K$ and $V$. The reshape is a memory-layout no-op: slice $h$ of $Q^{\mathrm{blk}} \in \mathbb{R}^{T \times H \times d_k}$ is $Q^{(h)}$. Since $\mathrm{Attn}$ is computed independently per head and uses only that head's $(Q^{(h)}, K^{(h)}, V^{(h)})$, the outputs match.
+\end{proof}
+
+\begin{remark}
+The score matrix is \emph{not} a single $HT \times HT$ block-diagonal matmul: the softmax is taken per head, with no cross-head mixing until $W_O$. The block picture says only that the linear projections factor cleanly; the nonlinearity preserves head independence.
+\end{remark}
+
+\begin{theorem}[Parameter count is independent of $H$]
+\label{thm:params}
+The total parameter count of MHA's $W_Q^{(\cdot)}, W_K^{(\cdot)}, W_V^{(\cdot)}, W_O$ is exactly $4 d^2$.
+\end{theorem}
+\begin{proof}
+Each per-head projection is $d \times d_k = d \times d/H$, with $d^2/H$ parameters. Three projections per head and $H$ heads yield
+\[
+3 H \cdot \frac{d^2}{H} \;=\; 3 d^2.
+\]
+The output projection $W_O$ is $H d_v \times d = d \times d$, contributing $d^2$. Total: $4 d^2$. The $1/H$ shrinkage of each head exactly cancels the $H$-fold replication.
+\end{proof}
+
+\begin{theorem}[Compute complexity]
+\label{thm:compute}
+For input $X \in \mathbb{R}^{T \times d}$,
+\[
+\boxed{\;\mathrm{cost}(\mathrm{MHA}) \;=\; \Theta(T d^2 + T^2 d).\;}
+\]
+\end{theorem}
+\begin{proof}
+We sum FLOPs across the five steps.
+\begin{enumerate}
+  \item \emph{Q, K, V projections.} By Theorem~\ref{thm:block} we may treat them as three $T \times d$ by $d \times d$ matmuls: $\Theta(T d^2)$ in total.
+  \item \emph{Score $Q^{(h)} K^{(h)\top}$ per head.} Each is $(T \times d_k)(d_k \times T) = \Theta(T^2 d_k)$. Summed across $H$ heads: $H \cdot \Theta(T^2 d_k) = \Theta(T^2 d)$ since $H d_k = d$.
+  \item \emph{Softmax.} $\Theta(T^2)$ per head, $\Theta(H T^2)$ total --- subdominant.
+  \item \emph{Output $A V$.} Per head $(T \times T)(T \times d_v) = \Theta(T^2 d_v)$, total $\Theta(T^2 d)$.
+  \item \emph{$W_O$.} $T \times (H d_v) \cdot (H d_v \times d) = \Theta(T d^2)$.
+\end{enumerate}
+Adding: $\Theta(T d^2) + \Theta(T^2 d) + \Theta(H T^2) + \Theta(T^2 d) + \Theta(T d^2) = \Theta(T d^2 + T^2 d)$.
+\end{proof}
+
+\begin{corollary}[Long-context regime]
+When $T \gg d$, the $T^2 d$ term dominates. Doubling the sequence quadruples attention FLOPs but only doubles projection FLOPs. This is the structural reason transformer inference becomes attention-bound at long context lengths and motivates the efficient-attention literature of Chapter~27.
+\end{corollary}
+
+\begin{theorem}[KV-cache memory]
+\label{thm:kvcache}
+Autoregressive decoding caches $K, V$ for all past tokens. Per layer, MHA stores $2 T d$ scalars; GQA with $G$ groups stores $2 T d \cdot G/H$; MQA stores $2 T d / H$.
+\end{theorem}
+\begin{proof}
+Each head needs $K \in \mathbb{R}^{T \times d_k}$, $V \in \mathbb{R}^{T \times d_v}$, totalling $2 T d_k$ scalars. MHA replicates this $H$ times (one per head), giving $2 T H d_k = 2 T d$. GQA replicates $G$ times, MQA once. Multiplying through gives the stated counts.
+\end{proof}
+
+\begin{example}
+A $70$\,B-parameter model with $d = 8192$, $H = 64$ at $T = 8192$ stores $2 \cdot 8192 \cdot 8192 \approx 1.34 \times 10^{8}$ scalars per layer for MHA, but only $\approx 1.7 \times 10^{7}$ for GQA with $G = 8$ --- an $8\times$ inference-memory reduction at small quality cost.
+\end{example}
+
+\subsection*{Code sketch}
+
+\texttt{cells.json} implements MHA in numpy with $T = 8, d = 12, H = 3$, verifies Theorem~\ref{thm:block} numerically (max-abs-diff between per-head loop and block-projected reshape is at machine precision), times the forward pass for $T \in \{32, 64, 128, 256\}$ exhibiting the $T^2$ kink, and tabulates KV-cache sizes for MHA vs.\ GQA ($G = 2$) vs.\ MQA.
+
+\subsection*{Connection to LLMs}
+
+GPT-2 and GPT-3 use vanilla MHA. PaLM~(2022) deploys MQA following Shazeer~(2019), motivated by inference throughput. Llama~2 (2023) introduces GQA as a quality/memory compromise; Llama~3, Mistral, and most open-weights successors retain it. The contemporary picture: train MHA-shaped compute, deploy GQA to fit the KV cache in HBM. Chapter~23 stacks these blocks into a transformer layer; Chapter~27 attacks the $T^2 d$ term proven above (FlashAttention, sliding-window, linear attention).
