@@ -1,0 +1,112 @@
+\subsection*{Motivation}
+
+Probability theory (Chapters~7--10) reasons forward from a known distribution to data. \emph{Statistical inference} runs the arrow backwards: given data, recover the distribution. Two principles dominate modern practice and underwrite essentially all of deep learning: \emph{maximum likelihood estimation} (MLE) and its generalization, \emph{empirical risk minimization} (ERM). We will show that MLE is precisely the minimizer of cross-entropy between the empirical distribution and the model, connecting Chapter~11's information theory to Chapter~17's language-model objective.
+
+\subsection*{Definitions}
+
+\begin{definition}[Statistical model and iid sample]
+A \emph{statistical model} is a family $\mathcal{P} = \{p_\theta : \theta \in \Theta\}$ of probability densities (or mass functions) on a sample space $\mathcal{X}$, indexed by $\theta \in \Theta \subseteq \mathbb{R}^d$. A sample $X_1,\dots,X_n$ is \emph{iid} from $p_{\theta^*}$ if the joint density factors as $\prod_{i=1}^n p_{\theta^*}(x_i)$.
+\end{definition}
+
+\begin{definition}[Likelihood and MLE]
+The \emph{likelihood} and \emph{log-likelihood} are
+\[
+L(\theta;\mathbf{x}) = \prod_{i=1}^n p_\theta(x_i), \qquad \ell(\theta;\mathbf{x}) = \sum_{i=1}^n \log p_\theta(x_i).
+\]
+The \emph{maximum likelihood estimator} is $\hat\theta_{\mathrm{MLE}} = \arg\max_{\theta\in\Theta} \ell(\theta;\mathbf{x})$.
+\end{definition}
+
+\begin{definition}[Empirical risk minimization]
+Given a loss $\ell(\theta;x)$ (not necessarily $-\log p_\theta$),
+\[
+\hat\theta_{\mathrm{ERM}} = \arg\min_{\theta\in\Theta} \frac{1}{n}\sum_{i=1}^n \ell(\theta;x_i).
+\]
+MLE is ERM with $\ell(\theta;x) = -\log p_\theta(x)$.
+\end{definition}
+
+\begin{definition}[Bias, variance, MSE]
+For an estimator $\hat\theta = \hat\theta(X_1,\dots,X_n)$ of a scalar $\theta^*$:
+\[
+\mathrm{Bias}(\hat\theta) = \mathbb{E}[\hat\theta]-\theta^*, \quad
+\mathrm{Var}(\hat\theta) = \mathbb{E}[(\hat\theta-\mathbb{E}\hat\theta)^2], \quad
+\mathrm{MSE}(\hat\theta) = \mathbb{E}[(\hat\theta-\theta^*)^2].
+\]
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[MLE equals minimum cross-entropy]\label{thm:mle-ce}
+Let $\hat p_n(x) = \tfrac{1}{n}\sum_{i=1}^n \mathbf{1}\{x_i = x\}$ be the empirical distribution. Then
+\[
+\arg\max_\theta \ell(\theta;\mathbf{x}) \;=\; \arg\min_\theta H(\hat p_n,\,p_\theta),
+\]
+where $H(\hat p_n, p_\theta) = -\sum_x \hat p_n(x)\log p_\theta(x)$ is the cross-entropy from Chapter~11.
+\end{theorem}
+
+\begin{proof}
+Direct algebra:
+\[
+\tfrac{1}{n}\,\ell(\theta) = \tfrac{1}{n}\sum_{i=1}^n \log p_\theta(x_i) = \sum_x \hat p_n(x)\log p_\theta(x) = -H(\hat p_n, p_\theta).
+\]
+Maximizing $\ell$ is equivalent to maximizing $\ell/n$, which is equivalent to minimizing $H(\hat p_n,p_\theta)$.
+\end{proof}
+
+\begin{corollary}[MLE equals minimum KL]
+By the Chapter~11 identity $H(\hat p_n,p_\theta) = H(\hat p_n) + D_{\mathrm{KL}}(\hat p_n \,\|\, p_\theta)$, and since $H(\hat p_n)$ does not depend on $\theta$,
+\[
+\hat\theta_{\mathrm{MLE}} = \arg\min_\theta D_{\mathrm{KL}}(\hat p_n \,\|\, p_\theta).
+\]
+\end{corollary}
+
+\begin{theorem}[Bias--variance decomposition]\label{thm:bv}
+For any square-integrable estimator $\hat\theta$ of $\theta^* \in \mathbb{R}$,
+\[
+\mathrm{MSE}(\hat\theta) = \mathrm{Bias}(\hat\theta)^2 + \mathrm{Var}(\hat\theta).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $\bar\theta = \mathbb{E}[\hat\theta]$. Add and subtract $\bar\theta$ inside the square:
+\[
+\mathbb{E}[(\hat\theta-\theta^*)^2] = \mathbb{E}\bigl[((\hat\theta-\bar\theta)+(\bar\theta-\theta^*))^2\bigr].
+\]
+Expand:
+\[
+= \mathbb{E}[(\hat\theta-\bar\theta)^2] + 2(\bar\theta-\theta^*)\,\mathbb{E}[\hat\theta-\bar\theta] + (\bar\theta-\theta^*)^2.
+\]
+The cross term vanishes because $\mathbb{E}[\hat\theta-\bar\theta]=0$, leaving $\mathrm{Var}(\hat\theta) + \mathrm{Bias}(\hat\theta)^2$.
+\end{proof}
+
+\begin{theorem}[MLE for Gaussian mean, known variance]\label{thm:mle-gauss}
+Let $X_1,\dots,X_n \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(\mu,\sigma^2)$ with $\sigma^2$ known. Then $\hat\mu_{\mathrm{MLE}} = \bar X_n = \tfrac{1}{n}\sum_{i=1}^n X_i$.
+\end{theorem}
+
+\begin{proof}
+The log-likelihood is
+\[
+\ell(\mu) = -\tfrac{n}{2}\log(2\pi\sigma^2) - \tfrac{1}{2\sigma^2}\sum_{i=1}^n (X_i-\mu)^2.
+\]
+Differentiate:
+\[
+\ell'(\mu) = \tfrac{1}{\sigma^2}\sum_{i=1}^n (X_i - \mu).
+\]
+Setting $\ell'(\mu)=0$ gives $\sum_i X_i = n\mu$, i.e.\ $\hat\mu = \bar X_n$. The second derivative is $-n/\sigma^2 < 0$, so this is a strict maximum.
+\end{proof}
+
+\begin{theorem}[Consistency of MLE, sketch]\label{thm:consistency}
+Under regularity conditions (identifiability, compact $\Theta$, dominated $\log p_\theta$), $\hat\theta_n \xrightarrow{P} \theta^*$ as $n \to \infty$.
+\end{theorem}
+
+\begin{proof}[Sketch]
+By the Chapter~10 LLN, $\tfrac{1}{n}\ell_n(\theta) \xrightarrow{P} M(\theta) := \mathbb{E}_{\theta^*}[\log p_\theta(X)]$. Gibbs' inequality (Chapter~11) gives $M(\theta) \le M(\theta^*)$ with equality iff $p_\theta = p_{\theta^*}$ a.s., so $\theta^*$ is the unique maximizer of $M$. A uniform LLN over $\Theta$ transfers the maximizer of $\ell_n/n$ to that of $M$, yielding $\hat\theta_n \xrightarrow{P} \theta^*$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The accompanying notebook (\texttt{cells.json}): (i)~simulates $n=1000$ samples from $\mathcal{N}(2,1)$, evaluates $\ell(\mu)$ on a grid, and confirms $\arg\max = \bar X_n$; (ii)~draws $n=500$ from a categorical with $p=(0.1,0.2,0.3,0.4)$, computes $\hat p_n$, and checks that $H(\hat p_n,p_\theta)$ is minimized exactly at $\theta = \hat p_n$; (iii)~empirically decomposes MSE for two estimators of a Gaussian mean; (iv)~solves linear regression as ERM via the normal equation.
+
+\subsection*{Connection to LLMs}
+
+\begin{remark}
+Language-model \emph{pre-training} is MLE. For an autoregressive model, $p_\theta(x_{1:T}) = \prod_{t} p_\theta(x_t \mid x_{<t})$, so the corpus log-likelihood is $\sum_{\mathrm{seq}}\sum_t \log p_\theta(x_t\mid x_{<t})$. The training loss $-\ell(\theta)/N$ is exactly the cross-entropy $H(\hat p_n, p_\theta)$ between the empirical token distribution and the model. By Theorem~\ref{thm:mle-ce} and its corollary, every gradient step of a transformer (Chapter~25) is one step of MLE~$=$~ERM with log-loss~$=$~KL projection toward the empirical corpus. Bias--variance reasoning (Theorem~\ref{thm:bv}) then governs the scaling laws and generalization gap discussed in Chapter~27.
+\end{remark}

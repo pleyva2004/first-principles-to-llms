@@ -1,0 +1,136 @@
+\subsection*{Motivation}
+
+Every language model is a probability distribution over token sequences. To make rigorous sense of statements like ``the model assigns probability $p$ to token $t$ given context $c$'' we need a precise theory of \emph{what} a probability is, \emph{what} it acts on, and \emph{what} consistency rules it must obey. Naive frequentism does not, on its own, justify additivity, well-definedness of conditioning, or continuity in limits. Kolmogorov's 1933 axiomatization solves this by reducing probability to measure theory on a $\sigma$-algebra. This chapter builds that machinery from the set-theoretic foundations of Chapter~1 up through inclusion--exclusion, the union bound, Bayes, the law of total probability, and continuity of measure.
+
+\subsection*{Sample spaces, $\sigma$-algebras, probability measures}
+
+\begin{definition}[Sample space, event]
+A \emph{sample space} is a non-empty set $\Omega$. Its elements $\omega \in \Omega$ are \emph{outcomes}. An \emph{event} is a subset $A \subseteq \Omega$.
+\end{definition}
+
+\begin{definition}[$\sigma$-algebra]
+A collection $\mathcal{F} \subseteq 2^{\Omega}$ is a \emph{$\sigma$-algebra} on $\Omega$ if
+\begin{enumerate}
+  \item $\Omega \in \mathcal{F}$;
+  \item $A \in \mathcal{F} \Rightarrow A^{c} \in \mathcal{F}$;
+  \item $A_{1}, A_{2}, \ldots \in \mathcal{F} \Rightarrow \bigcup_{n=1}^{\infty} A_{n} \in \mathcal{F}$.
+\end{enumerate}
+\end{definition}
+
+\begin{remark}
+By De Morgan's laws (Chapter~1), $\mathcal{F}$ is closed under countable intersections as well: $\bigcap_{n} A_{n} = \left(\bigcup_{n} A_{n}^{c}\right)^{c}$. The closure axioms mirror set algebra exactly, extended to the countably infinite operations probability needs.
+\end{remark}
+
+\begin{definition}[Probability measure, probability space]
+A function $\mathbb{P}: \mathcal{F} \to [0, 1]$ is a \emph{probability measure} if it satisfies the \emph{Kolmogorov axioms}:
+\begin{enumerate}
+  \item[\textbf{(K1)}] $\mathbb{P}(A) \geq 0$ for all $A \in \mathcal{F}$;
+  \item[\textbf{(K2)}] $\mathbb{P}(\Omega) = 1$;
+  \item[\textbf{(K3)}] for pairwise disjoint $A_{1}, A_{2}, \ldots \in \mathcal{F}$,
+  \[
+    \mathbb{P}\!\left(\bigsqcup_{n=1}^{\infty} A_{n}\right) = \sum_{n=1}^{\infty} \mathbb{P}(A_{n}).
+  \]
+\end{enumerate}
+The triple $(\Omega, \mathcal{F}, \mathbb{P})$ is a \emph{probability space}.
+\end{definition}
+
+\begin{definition}[Conditional probability, independence]
+For $B \in \mathcal{F}$ with $\mathbb{P}(B) > 0$, the \emph{conditional probability} of $A$ given $B$ is
+\[
+  \mathbb{P}(A \mid B) := \frac{\mathbb{P}(A \cap B)}{\mathbb{P}(B)}.
+\]
+Events $A, B$ are \emph{independent} iff $\mathbb{P}(A \cap B) = \mathbb{P}(A)\,\mathbb{P}(B)$.
+\end{definition}
+
+\subsection*{Elementary consequences}
+
+\begin{lemma}[Finite additivity, complement, monotonicity]
+\label{lem:basic}
+$\mathbb{P}(\emptyset) = 0$. For disjoint $A, B \in \mathcal{F}$, $\mathbb{P}(A \sqcup B) = \mathbb{P}(A) + \mathbb{P}(B)$. For any $A$, $\mathbb{P}(A^{c}) = 1 - \mathbb{P}(A)$. If $A \subseteq B$, then $\mathbb{P}(A) \leq \mathbb{P}(B)$.
+\end{lemma}
+
+\begin{proof}
+Apply (K3) to $\Omega, \emptyset, \emptyset, \ldots$ (disjoint, with union $\Omega$) to get $1 = 1 + \sum_{n \geq 2} \mathbb{P}(\emptyset)$, so $\mathbb{P}(\emptyset) = 0$. For finite additivity, apply (K3) to $A, B, \emptyset, \emptyset, \ldots$. From $\Omega = A \sqcup A^{c}$ and (K2), $1 = \mathbb{P}(A) + \mathbb{P}(A^{c})$. If $A \subseteq B$, then $B = A \sqcup (B \setminus A)$, so $\mathbb{P}(B) = \mathbb{P}(A) + \mathbb{P}(B \setminus A) \geq \mathbb{P}(A)$ by (K1).
+\end{proof}
+
+\begin{theorem}[Inclusion--exclusion, two events]
+For all $A, B \in \mathcal{F}$,
+\[
+  \mathbb{P}(A \cup B) = \mathbb{P}(A) + \mathbb{P}(B) - \mathbb{P}(A \cap B).
+\]
+\end{theorem}
+
+\begin{proof}
+Decompose into three disjoint pieces:
+\[
+  A \cup B = (A \setminus B) \sqcup (B \setminus A) \sqcup (A \cap B), \quad A = (A \setminus B) \sqcup (A \cap B), \quad B = (B \setminus A) \sqcup (A \cap B).
+\]
+By Lemma~\ref{lem:basic},
+\[
+  \mathbb{P}(A) + \mathbb{P}(B) = \mathbb{P}(A \setminus B) + \mathbb{P}(B \setminus A) + 2\,\mathbb{P}(A \cap B) = \mathbb{P}(A \cup B) + \mathbb{P}(A \cap B). \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Union bound / Boole's inequality]
+For any countable family $\{A_{n}\} \subseteq \mathcal{F}$,
+\[
+  \mathbb{P}\!\left(\bigcup_{n} A_{n}\right) \leq \sum_{n} \mathbb{P}(A_{n}).
+\]
+\end{theorem}
+
+\begin{proof}
+Disjointify: set $B_{1} = A_{1}$ and $B_{n} = A_{n} \setminus \bigcup_{k < n} A_{k}$ for $n \geq 2$. Each $B_{n} \in \mathcal{F}$ (closure under complements and countable unions), the $B_{n}$ are pairwise disjoint, $B_{n} \subseteq A_{n}$, and $\bigsqcup_{n} B_{n} = \bigcup_{n} A_{n}$. By (K3) and monotonicity,
+\[
+  \mathbb{P}\!\left(\bigcup_{n} A_{n}\right) = \sum_{n} \mathbb{P}(B_{n}) \leq \sum_{n} \mathbb{P}(A_{n}). \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Bayes]
+If $\mathbb{P}(A), \mathbb{P}(B) > 0$, then
+\[
+  \mathbb{P}(A \mid B) = \frac{\mathbb{P}(B \mid A)\,\mathbb{P}(A)}{\mathbb{P}(B)}.
+\]
+\end{theorem}
+
+\begin{proof}
+By definition, $\mathbb{P}(A \mid B)\,\mathbb{P}(B) = \mathbb{P}(A \cap B) = \mathbb{P}(B \cap A) = \mathbb{P}(B \mid A)\,\mathbb{P}(A)$. Divide by $\mathbb{P}(B)$.
+\end{proof}
+
+\begin{theorem}[Law of total probability]
+If $\{B_{i}\}_{i \in I}$ is a countable partition of $\Omega$ with $\mathbb{P}(B_{i}) > 0$, then for every $A \in \mathcal{F}$,
+\[
+  \mathbb{P}(A) = \sum_{i} \mathbb{P}(A \mid B_{i})\,\mathbb{P}(B_{i}).
+\]
+\end{theorem}
+
+\begin{proof}
+$A = A \cap \Omega = A \cap \bigsqcup_{i} B_{i} = \bigsqcup_{i} (A \cap B_{i})$, a disjoint union. By (K3), $\mathbb{P}(A) = \sum_{i} \mathbb{P}(A \cap B_{i}) = \sum_{i} \mathbb{P}(A \mid B_{i})\,\mathbb{P}(B_{i})$.
+\end{proof}
+
+\begin{theorem}[Continuity of measure]
+Let $A_{n} \in \mathcal{F}$.
+\begin{enumerate}
+  \item \emph{(From below)} If $A_{1} \subseteq A_{2} \subseteq \cdots$ and $A = \bigcup_{n} A_{n}$, then $\mathbb{P}(A_{n}) \uparrow \mathbb{P}(A)$.
+  \item \emph{(From above)} If $A_{1} \supseteq A_{2} \supseteq \cdots$ and $A = \bigcap_{n} A_{n}$, then $\mathbb{P}(A_{n}) \downarrow \mathbb{P}(A)$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+\emph{(Below.)} Set $B_{1} = A_{1}$, $B_{n} = A_{n} \setminus A_{n-1}$ for $n \geq 2$. The $B_{n}$ are disjoint, $\bigsqcup_{k \leq n} B_{k} = A_{n}$, and $\bigsqcup_{k} B_{k} = A$. By (K3),
+\[
+  \mathbb{P}(A) = \sum_{k=1}^{\infty} \mathbb{P}(B_{k}) = \lim_{n \to \infty} \sum_{k=1}^{n} \mathbb{P}(B_{k}) = \lim_{n \to \infty} \mathbb{P}(A_{n}).
+\]
+\emph{(Above.)} The sequence $C_{n} := A_{1} \setminus A_{n}$ is increasing with union $A_{1} \setminus A$. By the previous case, $\mathbb{P}(A_{1}) - \mathbb{P}(A_{n}) = \mathbb{P}(C_{n}) \to \mathbb{P}(A_{1} \setminus A) = \mathbb{P}(A_{1}) - \mathbb{P}(A)$. Since $\mathbb{P}(A_{1}) \leq 1 < \infty$, we may subtract: $\mathbb{P}(A_{n}) \to \mathbb{P}(A)$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook instantiates $\Omega = \{1, \ldots, 6\}^{2}$ with $\mathcal{F} = 2^{\Omega}$ and uniform $\mathbb{P}(A) = |A| / 36$. It verifies (K2), finite additivity for two disjoint events, two-event inclusion--exclusion, the union bound on three events, an independence vs.\ non-independence comparison, and a Bayes computation for disease testing checked both analytically and by Monte Carlo.
+
+\subsection*{Connection to LLMs}
+
+A causal language model (Chapter~25, forward reference) defines, for each context $c$, a probability measure on the finite sample space $\Omega = \mathcal{V}$ (the vocabulary), with $\mathcal{F} = 2^{\mathcal{V}}$ and $\mathbb{P}(\{t\} \mid c) = p_{\theta}(t \mid c)$. The softmax output is precisely a Kolmogorov probability measure: non-negative, normalized, additive on disjoint subsets of tokens. The factorization
+\[
+  \mathbb{P}(t_{1}, \ldots, t_{n}) = \prod_{i=1}^{n} \mathbb{P}(t_{i} \mid t_{<i})
+\]
+is iterated conditioning. Sampling, top-$k$ truncation, nucleus filtering, beam search, and importance-weighted training reduce to operations on this measure. Bayes' theorem reappears whenever we invert a generative model into a posterior over latents (alignment, reward modeling). Continuity of measure licenses limiting arguments needed for safety claims about infinite or arbitrarily long generations.

@@ -854,7 +854,142 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 8: Probability foundations: sample spaces, sigma-algebras, Kolmogorov axioms}
 \addcontentsline{toc}{section}{Chapter 8: Probability foundations: sample spaces, sigma-algebras, Kolmogorov axioms}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Every language model is a probability distribution over token sequences. To make rigorous sense of statements like ``the model assigns probability $p$ to token $t$ given context $c$'' we need a precise theory of \emph{what} a probability is, \emph{what} it acts on, and \emph{what} consistency rules it must obey. Naive frequentism does not, on its own, justify additivity, well-definedness of conditioning, or continuity in limits. Kolmogorov's 1933 axiomatization solves this by reducing probability to measure theory on a $\sigma$-algebra. This chapter builds that machinery from the set-theoretic foundations of Chapter~1 up through inclusion--exclusion, the union bound, Bayes, the law of total probability, and continuity of measure.
+
+\subsection*{Sample spaces, $\sigma$-algebras, probability measures}
+
+\begin{definition}[Sample space, event]
+A \emph{sample space} is a non-empty set $\Omega$. Its elements $\omega \in \Omega$ are \emph{outcomes}. An \emph{event} is a subset $A \subseteq \Omega$.
+\end{definition}
+
+\begin{definition}[$\sigma$-algebra]
+A collection $\mathcal{F} \subseteq 2^{\Omega}$ is a \emph{$\sigma$-algebra} on $\Omega$ if
+\begin{enumerate}
+  \item $\Omega \in \mathcal{F}$;
+  \item $A \in \mathcal{F} \Rightarrow A^{c} \in \mathcal{F}$;
+  \item $A_{1}, A_{2}, \ldots \in \mathcal{F} \Rightarrow \bigcup_{n=1}^{\infty} A_{n} \in \mathcal{F}$.
+\end{enumerate}
+\end{definition}
+
+\begin{remark}
+By De Morgan's laws (Chapter~1), $\mathcal{F}$ is closed under countable intersections as well: $\bigcap_{n} A_{n} = \left(\bigcup_{n} A_{n}^{c}\right)^{c}$. The closure axioms mirror set algebra exactly, extended to the countably infinite operations probability needs.
+\end{remark}
+
+\begin{definition}[Probability measure, probability space]
+A function $\mathbb{P}: \mathcal{F} \to [0, 1]$ is a \emph{probability measure} if it satisfies the \emph{Kolmogorov axioms}:
+\begin{enumerate}
+  \item[\textbf{(K1)}] $\mathbb{P}(A) \geq 0$ for all $A \in \mathcal{F}$;
+  \item[\textbf{(K2)}] $\mathbb{P}(\Omega) = 1$;
+  \item[\textbf{(K3)}] for pairwise disjoint $A_{1}, A_{2}, \ldots \in \mathcal{F}$,
+  \[
+    \mathbb{P}\!\left(\bigsqcup_{n=1}^{\infty} A_{n}\right) = \sum_{n=1}^{\infty} \mathbb{P}(A_{n}).
+  \]
+\end{enumerate}
+The triple $(\Omega, \mathcal{F}, \mathbb{P})$ is a \emph{probability space}.
+\end{definition}
+
+\begin{definition}[Conditional probability, independence]
+For $B \in \mathcal{F}$ with $\mathbb{P}(B) > 0$, the \emph{conditional probability} of $A$ given $B$ is
+\[
+  \mathbb{P}(A \mid B) := \frac{\mathbb{P}(A \cap B)}{\mathbb{P}(B)}.
+\]
+Events $A, B$ are \emph{independent} iff $\mathbb{P}(A \cap B) = \mathbb{P}(A)\,\mathbb{P}(B)$.
+\end{definition}
+
+\subsection*{Elementary consequences}
+
+\begin{lemma}[Finite additivity, complement, monotonicity]
+\label{lem:basic}
+$\mathbb{P}(\emptyset) = 0$. For disjoint $A, B \in \mathcal{F}$, $\mathbb{P}(A \sqcup B) = \mathbb{P}(A) + \mathbb{P}(B)$. For any $A$, $\mathbb{P}(A^{c}) = 1 - \mathbb{P}(A)$. If $A \subseteq B$, then $\mathbb{P}(A) \leq \mathbb{P}(B)$.
+\end{lemma}
+
+\begin{proof}
+Apply (K3) to $\Omega, \emptyset, \emptyset, \ldots$ (disjoint, with union $\Omega$) to get $1 = 1 + \sum_{n \geq 2} \mathbb{P}(\emptyset)$, so $\mathbb{P}(\emptyset) = 0$. For finite additivity, apply (K3) to $A, B, \emptyset, \emptyset, \ldots$. From $\Omega = A \sqcup A^{c}$ and (K2), $1 = \mathbb{P}(A) + \mathbb{P}(A^{c})$. If $A \subseteq B$, then $B = A \sqcup (B \setminus A)$, so $\mathbb{P}(B) = \mathbb{P}(A) + \mathbb{P}(B \setminus A) \geq \mathbb{P}(A)$ by (K1).
+\end{proof}
+
+\begin{theorem}[Inclusion--exclusion, two events]
+For all $A, B \in \mathcal{F}$,
+\[
+  \mathbb{P}(A \cup B) = \mathbb{P}(A) + \mathbb{P}(B) - \mathbb{P}(A \cap B).
+\]
+\end{theorem}
+
+\begin{proof}
+Decompose into three disjoint pieces:
+\[
+  A \cup B = (A \setminus B) \sqcup (B \setminus A) \sqcup (A \cap B), \quad A = (A \setminus B) \sqcup (A \cap B), \quad B = (B \setminus A) \sqcup (A \cap B).
+\]
+By Lemma~\ref{lem:basic},
+\[
+  \mathbb{P}(A) + \mathbb{P}(B) = \mathbb{P}(A \setminus B) + \mathbb{P}(B \setminus A) + 2\,\mathbb{P}(A \cap B) = \mathbb{P}(A \cup B) + \mathbb{P}(A \cap B). \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Union bound / Boole's inequality]
+For any countable family $\{A_{n}\} \subseteq \mathcal{F}$,
+\[
+  \mathbb{P}\!\left(\bigcup_{n} A_{n}\right) \leq \sum_{n} \mathbb{P}(A_{n}).
+\]
+\end{theorem}
+
+\begin{proof}
+Disjointify: set $B_{1} = A_{1}$ and $B_{n} = A_{n} \setminus \bigcup_{k < n} A_{k}$ for $n \geq 2$. Each $B_{n} \in \mathcal{F}$ (closure under complements and countable unions), the $B_{n}$ are pairwise disjoint, $B_{n} \subseteq A_{n}$, and $\bigsqcup_{n} B_{n} = \bigcup_{n} A_{n}$. By (K3) and monotonicity,
+\[
+  \mathbb{P}\!\left(\bigcup_{n} A_{n}\right) = \sum_{n} \mathbb{P}(B_{n}) \leq \sum_{n} \mathbb{P}(A_{n}). \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Bayes]
+If $\mathbb{P}(A), \mathbb{P}(B) > 0$, then
+\[
+  \mathbb{P}(A \mid B) = \frac{\mathbb{P}(B \mid A)\,\mathbb{P}(A)}{\mathbb{P}(B)}.
+\]
+\end{theorem}
+
+\begin{proof}
+By definition, $\mathbb{P}(A \mid B)\,\mathbb{P}(B) = \mathbb{P}(A \cap B) = \mathbb{P}(B \cap A) = \mathbb{P}(B \mid A)\,\mathbb{P}(A)$. Divide by $\mathbb{P}(B)$.
+\end{proof}
+
+\begin{theorem}[Law of total probability]
+If $\{B_{i}\}_{i \in I}$ is a countable partition of $\Omega$ with $\mathbb{P}(B_{i}) > 0$, then for every $A \in \mathcal{F}$,
+\[
+  \mathbb{P}(A) = \sum_{i} \mathbb{P}(A \mid B_{i})\,\mathbb{P}(B_{i}).
+\]
+\end{theorem}
+
+\begin{proof}
+$A = A \cap \Omega = A \cap \bigsqcup_{i} B_{i} = \bigsqcup_{i} (A \cap B_{i})$, a disjoint union. By (K3), $\mathbb{P}(A) = \sum_{i} \mathbb{P}(A \cap B_{i}) = \sum_{i} \mathbb{P}(A \mid B_{i})\,\mathbb{P}(B_{i})$.
+\end{proof}
+
+\begin{theorem}[Continuity of measure]
+Let $A_{n} \in \mathcal{F}$.
+\begin{enumerate}
+  \item \emph{(From below)} If $A_{1} \subseteq A_{2} \subseteq \cdots$ and $A = \bigcup_{n} A_{n}$, then $\mathbb{P}(A_{n}) \uparrow \mathbb{P}(A)$.
+  \item \emph{(From above)} If $A_{1} \supseteq A_{2} \supseteq \cdots$ and $A = \bigcap_{n} A_{n}$, then $\mathbb{P}(A_{n}) \downarrow \mathbb{P}(A)$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+\emph{(Below.)} Set $B_{1} = A_{1}$, $B_{n} = A_{n} \setminus A_{n-1}$ for $n \geq 2$. The $B_{n}$ are disjoint, $\bigsqcup_{k \leq n} B_{k} = A_{n}$, and $\bigsqcup_{k} B_{k} = A$. By (K3),
+\[
+  \mathbb{P}(A) = \sum_{k=1}^{\infty} \mathbb{P}(B_{k}) = \lim_{n \to \infty} \sum_{k=1}^{n} \mathbb{P}(B_{k}) = \lim_{n \to \infty} \mathbb{P}(A_{n}).
+\]
+\emph{(Above.)} The sequence $C_{n} := A_{1} \setminus A_{n}$ is increasing with union $A_{1} \setminus A$. By the previous case, $\mathbb{P}(A_{1}) - \mathbb{P}(A_{n}) = \mathbb{P}(C_{n}) \to \mathbb{P}(A_{1} \setminus A) = \mathbb{P}(A_{1}) - \mathbb{P}(A)$. Since $\mathbb{P}(A_{1}) \leq 1 < \infty$, we may subtract: $\mathbb{P}(A_{n}) \to \mathbb{P}(A)$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook instantiates $\Omega = \{1, \ldots, 6\}^{2}$ with $\mathcal{F} = 2^{\Omega}$ and uniform $\mathbb{P}(A) = |A| / 36$. It verifies (K2), finite additivity for two disjoint events, two-event inclusion--exclusion, the union bound on three events, an independence vs.\ non-independence comparison, and a Bayes computation for disease testing checked both analytically and by Monte Carlo.
+
+\subsection*{Connection to LLMs}
+
+A causal language model (Chapter~25, forward reference) defines, for each context $c$, a probability measure on the finite sample space $\Omega = \mathcal{V}$ (the vocabulary), with $\mathcal{F} = 2^{\mathcal{V}}$ and $\mathbb{P}(\{t\} \mid c) = p_{\theta}(t \mid c)$. The softmax output is precisely a Kolmogorov probability measure: non-negative, normalized, additive on disjoint subsets of tokens. The factorization
+\[
+  \mathbb{P}(t_{1}, \ldots, t_{n}) = \prod_{i=1}^{n} \mathbb{P}(t_{i} \mid t_{<i})
+\]
+is iterated conditioning. Sampling, top-$k$ truncation, nucleus filtering, beam search, and importance-weighted training reduce to operations on this measure. Bayes' theorem reappears whenever we invert a generative model into a posterior over latents (alignment, reward modeling). Continuity of measure licenses limiting arguments needed for safety claims about infinite or arbitrarily long generations.
 
 % --- CHAPTER 8 END ---
 
@@ -862,7 +997,136 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 9: Random variables, distributions, CDF/PMF/PDF}
 \addcontentsline{toc}{section}{Chapter 9: Random variables, distributions, CDF/PMF/PDF}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter 8 built probability spaces $(\Omega, \mathcal{F}, \mathbb{P})$ as the bedrock for modeling uncertainty. But raw $\Omega$ is rarely what we \emph{measure}: we measure a temperature, a token id, a pixel intensity. A \emph{random variable} is the bridge that turns abstract outcomes into real numbers we can sum, integrate, optimize, and---most importantly---differentiate. Every loss function in deep learning is an expectation over random variables; every sampler in a language model is a draw from a distribution; every softmax is a categorical PMF. This chapter formalizes the machinery.
+
+\subsection*{Definitions}
+
+\begin{definition}[Random variable]
+Let $(\Omega, \mathcal{F}, \mathbb{P})$ be a probability space. A function $X: \Omega \to \mathbb{R}$ is a \emph{random variable} (RV) if for every $x \in \mathbb{R}$,
+\[
+\{X \leq x\} := \{\omega \in \Omega : X(\omega) \leq x\} \in \mathcal{F}.
+\]
+Equivalently, $X^{-1}(B) \in \mathcal{F}$ for every Borel $B \in \mathcal{B}(\mathbb{R})$.
+\end{definition}
+
+\begin{definition}[Distribution]
+The \emph{distribution} (or \emph{law}) of $X$ is the pushforward measure $\mu_X$ on $(\mathbb{R}, \mathcal{B}(\mathbb{R}))$,
+\[
+\mu_X(B) = \mathbb{P}(X \in B), \qquad B \in \mathcal{B}(\mathbb{R}).
+\]
+\end{definition}
+
+\begin{definition}[CDF]
+The \emph{cumulative distribution function} of $X$ is $F_X : \mathbb{R} \to [0,1]$,
+\[
+F_X(x) = \mathbb{P}(X \leq x) = \mu_X((-\infty, x]).
+\]
+\end{definition}
+
+\begin{definition}[Discrete RV, PMF]
+$X$ is \emph{discrete} if it takes values in a countable set $S \subset \mathbb{R}$. The \emph{probability mass function} is
+\[
+p_X(x) = \mathbb{P}(X = x), \quad x \in S.
+\]
+\end{definition}
+
+\begin{definition}[Continuous RV, PDF]
+$X$ is \emph{(absolutely) continuous} if there exists a non-negative measurable $f_X : \mathbb{R} \to [0,\infty)$, the \emph{probability density function}, with
+\[
+\mathbb{P}(X \in A) = \int_A f_X(x)\,dx \quad \text{for every Borel } A \subseteq \mathbb{R}.
+\]
+\end{definition}
+
+\begin{example}[Standard families]
+\begin{itemize}
+\item Bernoulli$(p)$: $p_X(1)=p,\ p_X(0)=1-p$.
+\item Binomial$(n,p)$: $p_X(k) = \binom{n}{k} p^k (1-p)^{n-k}$.
+\item Categorical$(\pi_1,\dots,\pi_K)$: $p_X(k)=\pi_k$, $\sum_k \pi_k = 1$.
+\item Geometric$(p)$: $p_X(k) = (1-p)^{k-1} p$, $k \geq 1$.
+\item Uniform$[a,b]$: $f_X(x) = \tfrac{1}{b-a}\mathbf{1}_{[a,b]}(x)$.
+\item Gaussian $\mathcal{N}(\mu,\sigma^2)$: $f_X(x) = \tfrac{1}{\sqrt{2\pi}\sigma} \exp\!\left(-\tfrac{(x-\mu)^2}{2\sigma^2}\right)$.
+\end{itemize}
+\end{example}
+
+\begin{definition}[Joint, marginal, conditional]
+For $(X,Y)$ on the same space the \emph{joint} distribution is on $\mathbb{R}^2$. \emph{Marginals} integrate/sum out: $f_X(x) = \int f_{X,Y}(x,y)\, dy$. The \emph{conditional} density is $f_{Y\mid X}(y\mid x) = f_{X,Y}(x,y)/f_X(x)$ when $f_X(x) > 0$.
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Properties of CDF]
+$F_X$ is (i) non-decreasing, (ii) right-continuous, (iii) $\lim_{x\to -\infty} F_X(x) = 0$, (iv) $\lim_{x\to\infty} F_X(x) = 1$.
+\end{theorem}
+
+\begin{proof}
+(i) If $x \leq y$ then $\{X \leq x\} \subseteq \{X \leq y\}$, so $\mathbb{P}$-monotonicity gives $F_X(x) \leq F_X(y)$.
+
+(ii) Fix $x$ and let $x_n \downarrow x$. Then $\{X \leq x_n\} \downarrow \{X \leq x\}$ (countable intersection). By continuity of $\mathbb{P}$ from above (Chapter 8, since $\mathbb{P}(\{X\leq x_1\}) \leq 1 < \infty$),
+\[
+F_X(x_n) = \mathbb{P}(X \leq x_n) \to \mathbb{P}(X \leq x) = F_X(x).
+\]
+
+(iii) Take $x_n \downarrow -\infty$. Then $\{X \leq x_n\} \downarrow \emptyset$, hence $F_X(x_n) \to \mathbb{P}(\emptyset) = 0$.
+
+(iv) Take $x_n \uparrow \infty$. Then $\{X \leq x_n\} \uparrow \Omega$; continuity from below gives $F_X(x_n) \to \mathbb{P}(\Omega) = 1$.
+\end{proof}
+
+\begin{theorem}[Normalization]
+$\sum_{x \in S} p_X(x) = 1$ in the discrete case, and $\int_{\mathbb{R}} f_X(x)\,dx = 1$ in the continuous case.
+\end{theorem}
+
+\begin{proof}
+Discrete: $\{X = x\}$ for $x \in S$ are disjoint with union $\{X \in S\} = \Omega$. Countable additivity:
+\[
+1 = \mathbb{P}(\Omega) = \sum_{x \in S} \mathbb{P}(X = x) = \sum_x p_X(x).
+\]
+Continuous: take $A = \mathbb{R}$ in the defining property: $1 = \mathbb{P}(X \in \mathbb{R}) = \int_\mathbb{R} f_X$.
+\end{proof}
+
+\begin{theorem}[Change of variables, 1-D]
+Let $X$ have density $f_X$ and let $g$ be strictly monotone and $C^1$ on the support of $X$. Then $Y = g(X)$ has density
+\[
+f_Y(y) = f_X(g^{-1}(y))\,\bigl|(g^{-1})'(y)\bigr|.
+\]
+\end{theorem}
+
+\begin{proof}
+Suppose $g$ is strictly increasing. For $y \in g(\text{supp}\, X)$,
+\[
+F_Y(y) = \mathbb{P}(g(X) \leq y) = \mathbb{P}(X \leq g^{-1}(y)) = F_X(g^{-1}(y)).
+\]
+Differentiate using the chain rule (Chapter 3) and the fact that $F_X' = f_X$:
+\[
+f_Y(y) = f_X(g^{-1}(y))\,(g^{-1})'(y).
+\]
+Since $g^{-1}$ is increasing, $(g^{-1})'(y) > 0$, matching the absolute value. If $g$ is decreasing, $\{g(X) \leq y\} = \{X \geq g^{-1}(y)\}$, so $F_Y(y) = 1 - F_X(g^{-1}(y))$ and differentiation gives $-f_X(g^{-1}(y))(g^{-1})'(y)$ with $(g^{-1})'(y) < 0$, again the absolute value.
+\end{proof}
+
+\begin{theorem}[Inverse-CDF sampling]
+Let $F$ be a CDF on $\mathbb{R}$ and define the generalized inverse $F^{-1}(u) = \inf\{x : F(x) \geq u\}$. If $U \sim \mathrm{Uniform}[0,1]$, then $X := F^{-1}(U)$ has CDF $F$.
+\end{theorem}
+
+\begin{proof}
+We claim $\{F^{-1}(U) \leq x\} = \{U \leq F(x)\}$ up to a null set. If $F^{-1}(u) \leq x$, the infimum definition together with right-continuity of $F$ implies $F(x) \geq u$. Conversely, if $u \leq F(x)$ then $x \in \{x' : F(x') \geq u\}$, so $F^{-1}(u) \leq x$. Hence
+\[
+\mathbb{P}(X \leq x) = \mathbb{P}(U \leq F(x)) = F(x),
+\]
+using uniformity of $U$ on $[0,1]$.
+\end{proof}
+
+\subsection*{Code Sketch}
+
+The notebook (\texttt{cells.json}): (1) builds a 5-class categorical via softmax of fixed logits and verifies $\sum p_X = 1$; (2) computes its CDF and samples 10000 draws by inverse-CDF, comparing empirical to true; (3) implements $f(x) = \tfrac{1}{\sqrt{2\pi}} e^{-x^2/2}$, verifies $\int f \approx 1$ by Riemann sum, and computes $F(x)$ by cumulative sum; (4) verifies Theorem 9.3 on $Y = -\ln X$ with $X \sim U[0,1]$, yielding $Y \sim \mathrm{Exp}(1)$; (5) re-runs inverse-CDF sampling on the categorical with growing $n$ to demonstrate convergence.
+
+\subsection*{Connection to LLMs}
+
+A causal language model produces logits $z_t \in \mathbb{R}^V$, which softmax maps to a categorical distribution
+\[
+p_\theta(x_t \mid x_{<t}) = \mathrm{softmax}(z_t).
+\]
+Token sampling at temperature $\tau$ rescales logits to $z_t/\tau$ and draws from this categorical. The standard implementation is exactly inverse-CDF sampling (Theorem 9.4) on the cumulative softmax, or equivalently the \emph{Gumbel-max trick} $\arg\max_k(z_k + G_k)$ with $G_k \sim \mathrm{Gumbel}(0,1)$. Cross-entropy loss (Chapter 17) is $-\log p_\theta(x_t\mid x_{<t})$, an expectation under the data distribution; the causal LM training objective (Chapter 25) is the joint log-likelihood factored through the conditional distributions defined here.
 
 % --- CHAPTER 9 END ---
 
@@ -870,7 +1134,156 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 10: Expectation, variance, covariance; Jensen's inequality}
 \addcontentsline{toc}{section}{Chapter 10: Expectation, variance, covariance; Jensen's inequality}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Random variables (Chapter~9) describe uncertain outcomes. To compress an entire distribution into a single representative number we use the \emph{expectation}; to describe spread and joint linear association we use \emph{variance} and \emph{covariance}. Together with \emph{Jensen's inequality}, these objects form the structural backbone of every loss function and convergence proof in modern deep learning. Training an LLM is, formally, the minimization of an expectation $\mathbb{E}_{x\sim\mathcal{D}}[\ell(\theta;x)]$; SGD is a Monte Carlo estimator of that expectation; the variance of the estimator dictates convergence speed (Chapter~13).
+
+\subsection*{Definitions}
+
+\begin{definition}[Expectation]
+For a discrete random variable $X$ with pmf $p_X$,
+\[
+\mathbb{E}[X] \;=\; \sum_x x\,p_X(x), \qquad \text{provided } \sum_x |x|\,p_X(x) < \infty.
+\]
+For continuous $X$ with density $f_X$,
+\[
+\mathbb{E}[X] \;=\; \int_{\mathbb{R}} x\,f_X(x)\,dx,
+\]
+provided the integral is absolutely convergent. In full generality, $\mathbb{E}[X] := \int_\Omega X\,d\mathbb{P}$ is the Lebesgue integral against the underlying probability measure (cited without proof; see Billingsley, \emph{Probability and Measure}).
+\end{definition}
+
+\begin{definition}[Variance and covariance]
+For $X$ with $\mathbb{E}[X^2] < \infty$, $\mathrm{Var}(X) := \mathbb{E}[(X - \mathbb{E}X)^2]$, and $\sigma_X := \sqrt{\mathrm{Var}(X)}$. For $X,Y$ with finite variance,
+\[
+\mathrm{Cov}(X,Y) := \mathbb{E}\big[(X-\mathbb{E}X)(Y-\mathbb{E}Y)\big], \qquad
+\rho_{X,Y} := \frac{\mathrm{Cov}(X,Y)}{\sigma_X\sigma_Y} \in [-1,1].
+\]
+The bound $|\rho|\le 1$ is the Cauchy--Schwarz inequality applied to the inner product $\langle U,V\rangle := \mathbb{E}[UV]$ on the Hilbert space $L^2(\Omega,\mathcal{F},\mathbb{P})$.
+\end{definition}
+
+\begin{definition}[Conditional expectation]
+For discrete $X,Y$ and any $y$ with $p_Y(y) > 0$,
+\[
+\mathbb{E}[X\mid Y = y] \;=\; \sum_x x\,p_{X\mid Y}(x\mid y).
+\]
+Viewed as $y$ varies, $\mathbb{E}[X\mid Y]$ is itself a random variable: a measurable function of $Y$. The general definition characterizes $\mathbb{E}[X\mid \mathcal{G}]$ as the unique (a.s.) $\mathcal{G}$-measurable random variable satisfying $\int_A \mathbb{E}[X\mid\mathcal{G}]\,d\mathbb{P} = \int_A X\,d\mathbb{P}$ for every $A\in\mathcal{G}$ (Radon--Nikodym).
+\end{definition}
+
+\subsection*{Theorems with proofs}
+
+\begin{theorem}[Linearity of expectation]
+For random variables $X, Y$ with finite expectation and scalars $a, b\in\mathbb{R}$,
+\[
+\mathbb{E}[aX + bY] \;=\; a\,\mathbb{E}[X] + b\,\mathbb{E}[Y].
+\]
+Independence is \emph{not} required.
+\end{theorem}
+
+\begin{proof}
+In the discrete case, with joint pmf $p_{X,Y}$,
+\[
+\mathbb{E}[aX+bY] = \sum_{x,y}(ax+by)\,p_{X,Y}(x,y) = a\sum_{x,y} x\,p_{X,Y}(x,y) + b\sum_{x,y} y\,p_{X,Y}(x,y).
+\]
+Marginalizing, $\sum_y p_{X,Y}(x,y) = p_X(x)$ and $\sum_x p_{X,Y}(x,y) = p_Y(y)$, giving $a\,\mathbb{E}[X] + b\,\mathbb{E}[Y]$. The continuous case is identical with sums replaced by integrals; in full generality, linearity is a defining property of the Lebesgue integral.
+\end{proof}
+
+\begin{theorem}[Variance of a sum]
+\[
+\mathrm{Var}(X+Y) \;=\; \mathrm{Var}(X) + \mathrm{Var}(Y) + 2\,\mathrm{Cov}(X,Y).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $\mu_X = \mathbb{E}[X]$, $\mu_Y = \mathbb{E}[Y]$. By linearity, $\mathbb{E}[X+Y] = \mu_X + \mu_Y$. Then
+\begin{align*}
+\mathrm{Var}(X+Y) &= \mathbb{E}\!\left[((X-\mu_X)+(Y-\mu_Y))^2\right] \\
+&= \mathbb{E}[(X-\mu_X)^2] + \mathbb{E}[(Y-\mu_Y)^2] + 2\,\mathbb{E}[(X-\mu_X)(Y-\mu_Y)] \\
+&= \mathrm{Var}(X) + \mathrm{Var}(Y) + 2\,\mathrm{Cov}(X,Y). \qedhere
+\end{align*}
+\end{proof}
+
+\begin{remark}
+If $X\perp Y$ then $\mathrm{Cov}(X,Y)=0$ and variances add. The converse is false: zero covariance does not imply independence.
+\end{remark}
+
+\begin{theorem}[Jensen's inequality]
+Let $\phi:\mathbb{R}\to\mathbb{R}$ be convex and $X$ a random variable with $\mathbb{E}|X|<\infty$ and $\mathbb{E}|\phi(X)|<\infty$. Then
+\[
+\phi(\mathbb{E}[X]) \;\le\; \mathbb{E}[\phi(X)].
+\]
+\end{theorem}
+
+\begin{proof}
+Recall (Chapter~7) that a convex function on $\mathbb{R}$ admits a \emph{supporting line} at every interior point of its domain: at $x_0 := \mathbb{E}[X]$ there exists a subgradient $g \in \partial\phi(x_0)$ such that
+\[
+\phi(x) \;\ge\; \phi(x_0) + g(x - x_0) \qquad \text{for all } x \in \mathbb{R}.
+\]
+Substitute $X$ pointwise and take expectations. By linearity (Theorem above),
+\[
+\mathbb{E}[\phi(X)] \;\ge\; \phi(x_0) + g\,(\mathbb{E}[X] - x_0) \;=\; \phi(\mathbb{E}[X]),
+\]
+since $\mathbb{E}[X] - x_0 = 0$.
+\end{proof}
+
+\begin{theorem}[Markov's inequality]
+Let $X \ge 0$ a.s. and $a > 0$. Then
+\[
+\mathbb{P}(X \ge a) \;\le\; \frac{\mathbb{E}[X]}{a}.
+\]
+\end{theorem}
+
+\begin{proof}
+Pointwise, $a\cdot \mathbf{1}_{\{X\ge a\}} \le X$: when $X \ge a$, both sides are bounded above by $X$; when $X < a$, the left side is $0$ and $X \ge 0$. Take expectations: $a\,\mathbb{P}(X\ge a) \le \mathbb{E}[X]$, then divide by $a$.
+\end{proof}
+
+\begin{theorem}[Chebyshev's inequality]
+Let $\mathbb{E}[X] = \mu$ and $\sigma^2 := \mathrm{Var}(X) < \infty$. For $k > 0$,
+\[
+\mathbb{P}(|X - \mu| \ge k\sigma) \;\le\; \frac{1}{k^2}.
+\]
+\end{theorem}
+
+\begin{proof}
+Apply Markov to $Y := (X - \mu)^2 \ge 0$ with $a = k^2\sigma^2$:
+\[
+\mathbb{P}((X-\mu)^2 \ge k^2\sigma^2) \;\le\; \frac{\mathbb{E}[(X-\mu)^2]}{k^2\sigma^2} \;=\; \frac{1}{k^2}.
+\]
+The event $\{(X-\mu)^2 \ge k^2\sigma^2\}$ equals $\{|X-\mu| \ge k\sigma\}$.
+\end{proof}
+
+\begin{theorem}[Weak law of large numbers]
+Let $X_1, X_2, \dots$ be i.i.d.\ with $\mathbb{E}[X_i] = \mu$ and $\mathrm{Var}(X_i) = \sigma^2 < \infty$. Set $\bar{X}_n := \frac{1}{n}\sum_{i=1}^n X_i$. Then for every $\epsilon > 0$,
+\[
+\mathbb{P}(|\bar{X}_n - \mu| \ge \epsilon) \xrightarrow{n\to\infty} 0.
+\]
+\end{theorem}
+
+\begin{proof}
+By linearity, $\mathbb{E}[\bar{X}_n] = \mu$. By the variance-of-a-sum theorem and independence (covariances vanish), $\mathrm{Var}(\bar{X}_n) = \sigma^2/n$. Chebyshev's inequality yields
+\[
+\mathbb{P}(|\bar{X}_n - \mu| \ge \epsilon) \;\le\; \frac{\mathrm{Var}(\bar{X}_n)}{\epsilon^2} \;=\; \frac{\sigma^2}{n\epsilon^2} \;\to\; 0. \qedhere
+\]
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook (\texttt{cells.json}) verifies each result numerically: a five-outcome categorical for analytic vs.\ empirical $\mathbb{E},\mathrm{Var}$; the pair $(X, 2X+1)$ for linearity without independence; $\phi(x)=e^x$ on $\mathrm{Unif}\{-1,+1\}$ for Jensen; and i.i.d.\ $\mathrm{Unif}[0,1]$ samples for the LLN inside a Chebyshev confidence band.
+
+\subsection*{Connection to LLMs}
+
+Every modern language-model objective has the form
+\[
+\mathcal{L}(\theta) \;=\; \mathbb{E}_{x\sim\mathcal{D}}[\ell(\theta;x)],
+\]
+where $\mathcal{D}$ is the data distribution and $\ell$ is (typically) the next-token cross-entropy loss. The data distribution is intractable, so we replace the expectation by an empirical mean over a mini-batch of size $B$:
+\[
+\hat{\mathcal{L}}(\theta) \;=\; \frac{1}{B}\sum_{i=1}^B \ell(\theta; x_i).
+\]
+Linearity of expectation gives $\mathbb{E}[\nabla\hat{\mathcal{L}}] = \nabla\mathcal{L}$, so the SGD gradient is \emph{unbiased}. Theorem on variance of a sum, plus independence within the batch, yields $\mathrm{Var}(\nabla\hat{\mathcal{L}}) = \Theta(1/B)$ — exactly the reason larger batches give smoother training curves. The weak LLN guarantees recovery of the true loss in probability as $B\to\infty$ (formalized in Chapter~13). Jensen's inequality, applied to $-\log$, underwrites the evidence lower bound (ELBO) of Chapter~22:
+\[
+\log \mathbb{E}_{q}[Z] \;\ge\; \mathbb{E}_q[\log Z], \qquad Z > 0,
+\]
+which is the bedrock of every modern likelihood-based generative model.
 
 % --- CHAPTER 10 END ---
 
@@ -878,7 +1291,146 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 11: Information theory: self-information, entropy, cross-entropy, KL}
 \addcontentsline{toc}{section}{Chapter 11: Information theory: self-information, entropy, cross-entropy, KL}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter 9 gave us random variables; Chapter 10 gave us expectation and Jensen's inequality. We now ask: how much \emph{information} does an outcome carry, and how \emph{different} are two distributions on the same space? The answers --- entropy, cross-entropy, and the Kullback--Leibler divergence --- are not optional flavor. They \emph{are} the loss surface of every modern language model. Cross-entropy is the next-token training objective (Chapters 17, 25); KL is the trust-region regularizer in RLHF / DPO (Chapter 28); the entropy of the softmax is what people mean by ``sampling diversity.'' Every result below follows from one fact already proved: $-\ln$ is convex.
+
+We use the natural log $\ln$ throughout for clean derivatives. Replacing $\ln$ by $\log_2$ multiplies every formula by $1/\ln 2$ and converts \emph{nats} to \emph{bits}; nothing else changes.
+
+\subsection*{Definitions}
+
+\begin{definition}[Self-information]
+For a discrete random variable $X$ with PMF $p$ and $x \in \mathrm{supp}(p)$, the \emph{self-information} of the outcome $x$ is $I(x) := -\ln p(x)$. Rare outcomes carry more information; $I(x) \to \infty$ as $p(x) \to 0$.
+\end{definition}
+
+\begin{definition}[Shannon entropy]
+The \emph{entropy} of $p$ is the expected self-information,
+\[
+H(p) := \mathbb{E}_{x \sim p}[I(x)] = -\sum_{x} p(x) \ln p(x),
+\]
+with the convention $0 \ln 0 = 0$, justified by $\lim_{t \downarrow 0} t \ln t = 0$.
+\end{definition}
+
+\begin{definition}[Joint and conditional entropy]
+For a joint PMF $p_{X,Y}$,
+\[
+H(X, Y) = -\sum_{x,y} p_{X,Y}(x,y) \ln p_{X,Y}(x,y), \qquad H(Y \mid X) = -\sum_{x,y} p_{X,Y}(x,y) \ln p_{Y \mid X}(y \mid x).
+\]
+\end{definition}
+
+\begin{definition}[Cross-entropy]
+For PMFs $p, q$ on the same alphabet with $\mathrm{supp}(p) \subseteq \mathrm{supp}(q)$,
+\[
+H(p, q) := -\sum_{x} p(x) \ln q(x) = \mathbb{E}_{x \sim p}[-\ln q(x)].
+\]
+\end{definition}
+
+\begin{definition}[Kullback--Leibler divergence]
+\[
+D_{\mathrm{KL}}(p \,\|\, q) := \sum_{x} p(x) \ln \frac{p(x)}{q(x)} = \mathbb{E}_{x \sim p}\!\left[\ln \frac{p(x)}{q(x)}\right].
+\]
+$D_{\mathrm{KL}}$ is \emph{not} symmetric and \emph{not} a metric.
+\end{definition}
+
+\begin{definition}[Mutual information]
+For joint $p_{X,Y}$ with marginals $p_X, p_Y$,
+\[
+I(X; Y) := D_{\mathrm{KL}}(p_{X,Y} \,\|\, p_X \otimes p_Y) = \sum_{x,y} p_{X,Y}(x,y) \ln \frac{p_{X,Y}(x,y)}{p_X(x) p_Y(y)}.
+\]
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Gibbs' inequality / KL nonnegativity]
+For PMFs $p, q$ on the same finite alphabet with $q(x) > 0$ wherever $p(x) > 0$,
+\[
+D_{\mathrm{KL}}(p \,\|\, q) \geq 0,
+\]
+with equality iff $p(x) = q(x)$ for every $x$ with $p(x) > 0$.
+\end{theorem}
+
+\begin{proof}
+The function $\phi(t) = -\ln t$ is strictly convex on $(0, \infty)$ since $\phi''(t) = 1/t^2 > 0$. Compute, viewing the sum as $\mathbb{E}_{x \sim p}$:
+\[
+-D_{\mathrm{KL}}(p \,\|\, q) = \sum_{x : p(x) > 0} p(x) \ln \frac{q(x)}{p(x)} = -\,\mathbb{E}_{x \sim p}\!\left[\phi\!\left(\tfrac{q(x)}{p(x)}\right)\right].
+\]
+By Jensen's inequality (Chapter 10), $\mathbb{E}[\phi(Z)] \geq \phi(\mathbb{E}[Z])$ for convex $\phi$, hence
+\[
+-D_{\mathrm{KL}}(p \,\|\, q) \leq -\phi\!\left(\mathbb{E}_{x \sim p}\!\left[\tfrac{q(x)}{p(x)}\right]\right) = \ln\!\Bigl(\sum_{x : p(x) > 0} q(x)\Bigr) \leq \ln 1 = 0,
+\]
+using $\sum_x q(x) = 1$. Therefore $D_{\mathrm{KL}}(p \,\|\, q) \geq 0$. By strict convexity, Jensen is an equality iff $q(x)/p(x)$ is $p$-a.s.\ constant; since both $p$ and $q$ sum to $1$ on the support of $p$, that constant must be $1$, i.e.\ $p = q$ on $\mathrm{supp}(p)$.
+\end{proof}
+
+\begin{theorem}[Cross-entropy decomposition]
+$H(p, q) = H(p) + D_{\mathrm{KL}}(p \,\|\, q).$
+\end{theorem}
+
+\begin{proof}
+Direct algebra:
+\[
+H(p, q) = -\sum_x p(x) \ln q(x) = -\sum_x p(x) \bigl[\ln p(x) + \ln \tfrac{q(x)}{p(x)}\bigr] = H(p) + D_{\mathrm{KL}}(p \,\|\, q). \qedhere
+\]
+\end{proof}
+
+\begin{corollary}
+$H(p, q) \geq H(p)$, with equality iff $q = p$. In particular, $\min_q H(p, q) = H(p)$, attained at $q = p$.
+\end{corollary}
+
+\begin{theorem}[Maximum entropy on a finite alphabet]
+For any PMF $p$ supported on a set of size $K$,
+\[
+H(p) \leq \ln K,
+\]
+with equality iff $p$ is the uniform distribution $u(x) = 1/K$.
+\end{theorem}
+
+\begin{proof}
+Let $u$ denote the uniform distribution on the $K$-element support. Compute
+\[
+D_{\mathrm{KL}}(p \,\|\, u) = \sum_x p(x) \ln \frac{p(x)}{1/K} = -H(p) + \ln K \cdot \sum_x p(x) = \ln K - H(p).
+\]
+By Gibbs' inequality this is $\geq 0$, so $H(p) \leq \ln K$, with equality iff $p = u$.
+\end{proof}
+
+\begin{theorem}[Chain rule for entropy]
+$H(X, Y) = H(X) + H(Y \mid X).$
+\end{theorem}
+
+\begin{proof}
+Apply $\ln p_{X,Y}(x, y) = \ln p_X(x) + \ln p_{Y \mid X}(y \mid x)$:
+\[
+H(X, Y) = -\sum_{x,y} p_{X,Y}(x,y) \ln p_X(x) \;-\; \sum_{x,y} p_{X,Y}(x,y) \ln p_{Y \mid X}(y \mid x).
+\]
+Marginalizing $y$ in the first sum gives $-\sum_x p_X(x) \ln p_X(x) = H(X)$; the second sum is $H(Y \mid X)$ by definition.
+\end{proof}
+
+\begin{theorem}[Mutual information nonnegativity]
+$I(X; Y) \geq 0$, with equality iff $X$ and $Y$ are independent.
+\end{theorem}
+
+\begin{proof}
+By definition $I(X; Y) = D_{\mathrm{KL}}(p_{X,Y} \,\|\, p_X \otimes p_Y)$. Apply Gibbs (Theorem 1): this is $\geq 0$ with equality iff $p_{X,Y}(x, y) = p_X(x) p_Y(y)$ for all $x, y$ --- exactly independence.
+\end{proof}
+
+\begin{remark}
+Combining the chain rule with the definition of $I$ yields the standard symmetric identity
+\[
+I(X; Y) = H(X) + H(Y) - H(X, Y) = H(Y) - H(Y \mid X) = H(X) - H(X \mid Y).
+\]
+Conditioning never increases entropy: $H(Y \mid X) \leq H(Y)$.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The notebook builds two categorical distributions $p, q$ on a 5-token alphabet, implements \texttt{entropy}, \texttt{cross\_entropy}, and \texttt{kl} from the definitions above, and verifies $H(p, q) = H(p) + D_{\mathrm{KL}}(p \,\|\, q)$ to machine precision. It samples $50$ random Dirichlet pairs (seed $0$) and confirms $D_{\mathrm{KL}} \geq 0$ for every pair, with $D_{\mathrm{KL}}(p \,\|\, p) = 0$. For $K = 8$, it confirms $H(\text{uniform}) = \ln 8$ and that $H(p) < \ln 8$ for $100$ non-uniform draws. Finally it constructs a correlated joint on $\{0, 1\}^2$, computes $I(X; Y)$ via both formulas, verifies agreement, and shows $I = 0$ for the product distribution.
+
+\subsection*{Connection to LLMs}
+
+A causal language model defines $p_\theta(x_t \mid x_{<t})$ via softmax (Chapter 9). On a corpus drawn from $p_{\mathrm{data}}$, the training objective is
+\[
+\mathcal{L}(\theta) = \mathbb{E}_{x \sim p_{\mathrm{data}}}\!\left[-\ln p_\theta(x_t \mid x_{<t})\right] = H(p_{\mathrm{data}}, p_\theta) = H(p_{\mathrm{data}}) + D_{\mathrm{KL}}(p_{\mathrm{data}} \,\|\, p_\theta).
+\]
+Theorem 2 makes precise why minimizing cross-entropy \emph{is} minimizing KL to the data: the entropy term $H(p_{\mathrm{data}})$ does not depend on $\theta$. Theorem 4 sets the absolute floor: a uniform LM over a $50000$-token vocabulary has entropy $\ln 50000 \approx 10.82$ nats, which is the loss every trained model improves on (Chapter 17, 25). In RLHF and DPO (Chapter 28), the policy update is regularized by $D_{\mathrm{KL}}(\pi_\theta \,\|\, \pi_{\mathrm{ref}})$ to keep the fine-tuned policy close to the SFT initialization --- Gibbs' inequality is exactly what makes that penalty a meaningful divergence. Finally, the entropy of the sampler's softmax, controlled by temperature, is the ``diversity'' knob in decoding.
 
 % --- CHAPTER 11 END ---
 
@@ -886,7 +1438,118 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 12: Statistical inference: likelihood, MLE, ERM, bias-variance}
 \addcontentsline{toc}{section}{Chapter 12: Statistical inference: likelihood, MLE, ERM, bias-variance}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Probability theory (Chapters~7--10) reasons forward from a known distribution to data. \emph{Statistical inference} runs the arrow backwards: given data, recover the distribution. Two principles dominate modern practice and underwrite essentially all of deep learning: \emph{maximum likelihood estimation} (MLE) and its generalization, \emph{empirical risk minimization} (ERM). We will show that MLE is precisely the minimizer of cross-entropy between the empirical distribution and the model, connecting Chapter~11's information theory to Chapter~17's language-model objective.
+
+\subsection*{Definitions}
+
+\begin{definition}[Statistical model and iid sample]
+A \emph{statistical model} is a family $\mathcal{P} = \{p_\theta : \theta \in \Theta\}$ of probability densities (or mass functions) on a sample space $\mathcal{X}$, indexed by $\theta \in \Theta \subseteq \mathbb{R}^d$. A sample $X_1,\dots,X_n$ is \emph{iid} from $p_{\theta^*}$ if the joint density factors as $\prod_{i=1}^n p_{\theta^*}(x_i)$.
+\end{definition}
+
+\begin{definition}[Likelihood and MLE]
+The \emph{likelihood} and \emph{log-likelihood} are
+\[
+L(\theta;\mathbf{x}) = \prod_{i=1}^n p_\theta(x_i), \qquad \ell(\theta;\mathbf{x}) = \sum_{i=1}^n \log p_\theta(x_i).
+\]
+The \emph{maximum likelihood estimator} is $\hat\theta_{\mathrm{MLE}} = \arg\max_{\theta\in\Theta} \ell(\theta;\mathbf{x})$.
+\end{definition}
+
+\begin{definition}[Empirical risk minimization]
+Given a loss $\ell(\theta;x)$ (not necessarily $-\log p_\theta$),
+\[
+\hat\theta_{\mathrm{ERM}} = \arg\min_{\theta\in\Theta} \frac{1}{n}\sum_{i=1}^n \ell(\theta;x_i).
+\]
+MLE is ERM with $\ell(\theta;x) = -\log p_\theta(x)$.
+\end{definition}
+
+\begin{definition}[Bias, variance, MSE]
+For an estimator $\hat\theta = \hat\theta(X_1,\dots,X_n)$ of a scalar $\theta^*$:
+\[
+\mathrm{Bias}(\hat\theta) = \mathbb{E}[\hat\theta]-\theta^*, \quad
+\mathrm{Var}(\hat\theta) = \mathbb{E}[(\hat\theta-\mathbb{E}\hat\theta)^2], \quad
+\mathrm{MSE}(\hat\theta) = \mathbb{E}[(\hat\theta-\theta^*)^2].
+\]
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[MLE equals minimum cross-entropy]\label{thm:mle-ce}
+Let $\hat p_n(x) = \tfrac{1}{n}\sum_{i=1}^n \mathbf{1}\{x_i = x\}$ be the empirical distribution. Then
+\[
+\arg\max_\theta \ell(\theta;\mathbf{x}) \;=\; \arg\min_\theta H(\hat p_n,\,p_\theta),
+\]
+where $H(\hat p_n, p_\theta) = -\sum_x \hat p_n(x)\log p_\theta(x)$ is the cross-entropy from Chapter~11.
+\end{theorem}
+
+\begin{proof}
+Direct algebra:
+\[
+\tfrac{1}{n}\,\ell(\theta) = \tfrac{1}{n}\sum_{i=1}^n \log p_\theta(x_i) = \sum_x \hat p_n(x)\log p_\theta(x) = -H(\hat p_n, p_\theta).
+\]
+Maximizing $\ell$ is equivalent to maximizing $\ell/n$, which is equivalent to minimizing $H(\hat p_n,p_\theta)$.
+\end{proof}
+
+\begin{corollary}[MLE equals minimum KL]
+By the Chapter~11 identity $H(\hat p_n,p_\theta) = H(\hat p_n) + D_{\mathrm{KL}}(\hat p_n \,\|\, p_\theta)$, and since $H(\hat p_n)$ does not depend on $\theta$,
+\[
+\hat\theta_{\mathrm{MLE}} = \arg\min_\theta D_{\mathrm{KL}}(\hat p_n \,\|\, p_\theta).
+\]
+\end{corollary}
+
+\begin{theorem}[Bias--variance decomposition]\label{thm:bv}
+For any square-integrable estimator $\hat\theta$ of $\theta^* \in \mathbb{R}$,
+\[
+\mathrm{MSE}(\hat\theta) = \mathrm{Bias}(\hat\theta)^2 + \mathrm{Var}(\hat\theta).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $\bar\theta = \mathbb{E}[\hat\theta]$. Add and subtract $\bar\theta$ inside the square:
+\[
+\mathbb{E}[(\hat\theta-\theta^*)^2] = \mathbb{E}\bigl[((\hat\theta-\bar\theta)+(\bar\theta-\theta^*))^2\bigr].
+\]
+Expand:
+\[
+= \mathbb{E}[(\hat\theta-\bar\theta)^2] + 2(\bar\theta-\theta^*)\,\mathbb{E}[\hat\theta-\bar\theta] + (\bar\theta-\theta^*)^2.
+\]
+The cross term vanishes because $\mathbb{E}[\hat\theta-\bar\theta]=0$, leaving $\mathrm{Var}(\hat\theta) + \mathrm{Bias}(\hat\theta)^2$.
+\end{proof}
+
+\begin{theorem}[MLE for Gaussian mean, known variance]\label{thm:mle-gauss}
+Let $X_1,\dots,X_n \stackrel{\mathrm{iid}}{\sim} \mathcal{N}(\mu,\sigma^2)$ with $\sigma^2$ known. Then $\hat\mu_{\mathrm{MLE}} = \bar X_n = \tfrac{1}{n}\sum_{i=1}^n X_i$.
+\end{theorem}
+
+\begin{proof}
+The log-likelihood is
+\[
+\ell(\mu) = -\tfrac{n}{2}\log(2\pi\sigma^2) - \tfrac{1}{2\sigma^2}\sum_{i=1}^n (X_i-\mu)^2.
+\]
+Differentiate:
+\[
+\ell'(\mu) = \tfrac{1}{\sigma^2}\sum_{i=1}^n (X_i - \mu).
+\]
+Setting $\ell'(\mu)=0$ gives $\sum_i X_i = n\mu$, i.e.\ $\hat\mu = \bar X_n$. The second derivative is $-n/\sigma^2 < 0$, so this is a strict maximum.
+\end{proof}
+
+\begin{theorem}[Consistency of MLE, sketch]\label{thm:consistency}
+Under regularity conditions (identifiability, compact $\Theta$, dominated $\log p_\theta$), $\hat\theta_n \xrightarrow{P} \theta^*$ as $n \to \infty$.
+\end{theorem}
+
+\begin{proof}[Sketch]
+By the Chapter~10 LLN, $\tfrac{1}{n}\ell_n(\theta) \xrightarrow{P} M(\theta) := \mathbb{E}_{\theta^*}[\log p_\theta(X)]$. Gibbs' inequality (Chapter~11) gives $M(\theta) \le M(\theta^*)$ with equality iff $p_\theta = p_{\theta^*}$ a.s., so $\theta^*$ is the unique maximizer of $M$. A uniform LLN over $\Theta$ transfers the maximizer of $\ell_n/n$ to that of $M$, yielding $\hat\theta_n \xrightarrow{P} \theta^*$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+The accompanying notebook (\texttt{cells.json}): (i)~simulates $n=1000$ samples from $\mathcal{N}(2,1)$, evaluates $\ell(\mu)$ on a grid, and confirms $\arg\max = \bar X_n$; (ii)~draws $n=500$ from a categorical with $p=(0.1,0.2,0.3,0.4)$, computes $\hat p_n$, and checks that $H(\hat p_n,p_\theta)$ is minimized exactly at $\theta = \hat p_n$; (iii)~empirically decomposes MSE for two estimators of a Gaussian mean; (iv)~solves linear regression as ERM via the normal equation.
+
+\subsection*{Connection to LLMs}
+
+\begin{remark}
+Language-model \emph{pre-training} is MLE. For an autoregressive model, $p_\theta(x_{1:T}) = \prod_{t} p_\theta(x_t \mid x_{<t})$, so the corpus log-likelihood is $\sum_{\mathrm{seq}}\sum_t \log p_\theta(x_t\mid x_{<t})$. The training loss $-\ell(\theta)/N$ is exactly the cross-entropy $H(\hat p_n, p_\theta)$ between the empirical token distribution and the model. By Theorem~\ref{thm:mle-ce} and its corollary, every gradient step of a transformer (Chapter~25) is one step of MLE~$=$~ERM with log-loss~$=$~KL projection toward the empirical corpus. Bias--variance reasoning (Theorem~\ref{thm:bv}) then governs the scaling laws and generalization gap discussed in Chapter~27.
+\end{remark}
 
 % --- CHAPTER 12 END ---
 
@@ -898,7 +1561,134 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 13: SGD: stochastic-approximation theorem; mini-batching; convergence sketch}
 \addcontentsline{toc}{section}{Chapter 13: SGD: stochastic-approximation theorem; mini-batching; convergence sketch}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter 7 proved that gradient descent on an $L$-smooth convex function reaches an $\epsilon$-stationary point in $O(1/\epsilon)$ iterations using the \emph{full} gradient $\nabla F(\theta)$. For a transformer pre-trained on $10^{13}$ tokens, a single full-gradient step would require a forward/backward pass over the entire corpus --- weeks of compute per update. The fix is to estimate $\nabla F$ from a random \emph{mini-batch} and accept a noisy step in exchange for a cheap one. This chapter justifies the trade. We define the stochastic objective, prove that mini-batching reduces variance as $1/B$, and combine the descent lemma of Chapter 7 with the linearity of expectation (Chapter 10) to derive the canonical $O(1/\sqrt{T})$ rate of stochastic gradient descent on smooth (possibly non-convex) losses.
+
+\subsection*{Definitions}
+
+\begin{definition}[Stochastic objective]
+Let $\xi \sim \mathcal{D}$ be a random data point and $f(\cdot; \xi) : \mathbb{R}^n \to \mathbb{R}$ a loss. The \emph{population risk} is
+\[
+F(\theta) := \mathbb{E}_{\xi \sim \mathcal{D}}[f(\theta; \xi)],
+\]
+in the sense of Chapter 10. Training data are i.i.d. draws $\xi_1, \xi_2, \dots$ from $\mathcal{D}$.
+\end{definition}
+
+\begin{definition}[Stochastic gradient]
+$\hat g(\theta; \xi) := \nabla_\theta f(\theta; \xi)$. Under mild regularity (interchange of $\nabla$ and $\mathbb{E}$),
+\[
+\mathbb{E}_{\xi}[\hat g(\theta; \xi)] = \nabla F(\theta) \qquad (\text{unbiasedness}).
+\]
+\end{definition}
+
+\begin{definition}[SGD update]
+Given step size $\eta_t > 0$ and an independent sample $\xi_t \sim \mathcal{D}$,
+\[
+\theta_{t+1} = \theta_t - \eta_t \hat g(\theta_t; \xi_t).
+\]
+\end{definition}
+
+\begin{definition}[Mini-batch SGD]
+Draw $B$ i.i.d. samples $\xi_1, \dots, \xi_B$ and average:
+\[
+\hat g_B(\theta) := \frac{1}{B} \sum_{j=1}^{B} \nabla_\theta f(\theta; \xi_j).
+\]
+\end{definition}
+
+\begin{definition}[Bounded variance]
+$\mathbb{E}_\xi \|\hat g(\theta; \xi) - \nabla F(\theta)\|^2 \leq \sigma^2$ uniformly in $\theta$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Variance reduction by batching]
+Under bounded variance and i.i.d. sampling,
+\[
+\mathbb{E}\|\hat g_B(\theta) - \nabla F(\theta)\|^2 \leq \frac{\sigma^2}{B}.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $Z_j := \hat g(\theta; \xi_j) - \nabla F(\theta)$. The $Z_j$ are i.i.d., zero-mean, with $\mathbb{E}\|Z_j\|^2 \leq \sigma^2$. Then $\hat g_B - \nabla F = \tfrac{1}{B}\sum_j Z_j$, and
+\[
+\mathbb{E}\Big\|\tfrac{1}{B}\sum_j Z_j\Big\|^2 = \tfrac{1}{B^2}\sum_{j,k} \mathbb{E}\langle Z_j, Z_k\rangle = \tfrac{1}{B^2}\sum_j \mathbb{E}\|Z_j\|^2 \leq \frac{\sigma^2}{B},
+\]
+where cross terms vanish by independence and zero mean (Theorem 10.6).
+\end{proof}
+
+\begin{remark}
+This is the law of large numbers (Chapter 10) applied to the gradient: doubling the batch halves the noise variance.
+\end{remark}
+
+\begin{theorem}[SGD on $L$-smooth, possibly non-convex $F$]
+Suppose $F$ is $L$-smooth, bounded below by $F^\star$, and run SGD with constant step $\eta = \min(1/L,\, c/\sqrt{T})$ for $T$ iterations, with stochastic gradients of variance at most $\sigma^2/B$. Then
+\[
+\frac{1}{T}\sum_{t=0}^{T-1} \mathbb{E}\|\nabla F(\theta_t)\|^2 \leq \frac{2\big(F(\theta_0) - F^\star\big)}{\eta T} + \frac{L \eta \sigma^2}{B} = O(1/\sqrt{T}).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $g_t := \nabla F(\theta_t)$ and write $\hat g_t = g_t + \zeta_t$ with $\mathbb{E}[\zeta_t \mid \theta_t] = 0$ and $\mathbb{E}\|\zeta_t\|^2 \leq \sigma^2/B$. The descent lemma of Chapter 7, applied to the displacement $\theta_{t+1} - \theta_t = -\eta \hat g_t$, gives
+\[
+F(\theta_{t+1}) \leq F(\theta_t) - \eta \langle g_t, \hat g_t\rangle + \tfrac{L \eta^2}{2}\|\hat g_t\|^2.
+\]
+Take conditional expectation given $\theta_t$. Using $\mathbb{E}[\hat g_t \mid \theta_t] = g_t$ and $\mathbb{E}\|\hat g_t\|^2 = \|g_t\|^2 + \mathbb{E}\|\zeta_t\|^2$,
+\[
+\mathbb{E}[F(\theta_{t+1}) \mid \theta_t] \leq F(\theta_t) - \eta\|g_t\|^2 + \tfrac{L\eta^2}{2}\big(\|g_t\|^2 + \sigma^2/B\big).
+\]
+With $\eta \leq 1/L$ we have $\tfrac{L\eta^2}{2} \leq \eta/2$, so the coefficient of $\|g_t\|^2$ becomes $-\eta + \eta/2 = -\eta/2$:
+\[
+\mathbb{E}[F(\theta_{t+1}) \mid \theta_t] \leq F(\theta_t) - \tfrac{\eta}{2}\|g_t\|^2 + \tfrac{L \eta^2 \sigma^2}{2B}.
+\]
+Take the full expectation, sum $t = 0, \dots, T-1$, and telescope:
+\[
+\tfrac{\eta}{2} \sum_{t=0}^{T-1} \mathbb{E}\|g_t\|^2 \leq F(\theta_0) - \mathbb{E} F(\theta_T) + \tfrac{L \eta^2 \sigma^2 T}{2B} \leq F(\theta_0) - F^\star + \tfrac{L \eta^2 \sigma^2 T}{2B}.
+\]
+Divide by $\eta T / 2$:
+\[
+\frac{1}{T}\sum_{t=0}^{T-1}\mathbb{E}\|g_t\|^2 \leq \frac{2(F(\theta_0) - F^\star)}{\eta T} + \frac{L \eta \sigma^2}{B}.
+\]
+Choose $\eta = c/\sqrt{T}$ (subject to $\eta \leq 1/L$); both right-hand terms become $O(1/\sqrt{T})$, with $c = \sqrt{2(F(\theta_0) - F^\star) B / (L \sigma^2)}$ minimizing the bound.
+\end{proof}
+
+\begin{remark}
+The average squared gradient norm decays like $1/\sqrt{T}$ and the noise floor is proportional to $\eta \sigma^2 / B$. Larger batches permit a larger $\eta$ at the same noise level.
+\end{remark}
+
+\begin{theorem}[SGD on $L$-smooth, $\mu$-strongly convex $F$; sketch]
+With diminishing step $\eta_t = \tfrac{2}{\mu(t + t_0)}$ for $t_0$ large enough that $\eta_0 \leq 1/L$,
+\[
+\mathbb{E}\|\theta_T - \theta^\star\|^2 \leq \frac{C}{T}.
+\]
+\end{theorem}
+
+\begin{proof}[Sketch]
+Let $r_t^2 := \mathbb{E}\|\theta_t - \theta^\star\|^2$. Expand $\|\theta_{t+1} - \theta^\star\|^2 = \|\theta_t - \theta^\star - \eta_t \hat g_t\|^2$ and take expectation. Strong convexity gives $\langle g_t, \theta_t - \theta^\star\rangle \geq \mu \|\theta_t - \theta^\star\|^2$ (Chapter 7), and the noise contributes $\eta_t^2 \sigma^2/B$:
+\[
+r_{t+1}^2 \leq (1 - \eta_t \mu)\, r_t^2 + \eta_t^2 \sigma^2 / B.
+\]
+With $\eta_t \mu = 2/(t + t_0)$, induction $r_t^2 \leq C/(t + t_0)$ closes for $C \geq 4 \sigma^2/(\mu^2 B)$, giving $r_T^2 = O(1/T)$.
+\end{proof}
+
+\begin{proposition}[Robbins--Monro conditions, 1951]
+For $\theta_{t+1} = \theta_t - \eta_t \hat g_t$ to converge almost surely to a stationary point of $F$ under standard regularity, the step sizes must satisfy
+\[
+\sum_{t=0}^{\infty} \eta_t = \infty, \qquad \sum_{t=0}^{\infty} \eta_t^2 < \infty.
+\]
+\end{proposition}
+
+\begin{remark}
+$\sum \eta_t = \infty$ guarantees the iterates travel far enough to escape any bounded region; $\sum \eta_t^2 < \infty$ controls the cumulative noise $\sum \eta_t \zeta_t$ in second moment (martingale-convergence). The schedule $\eta_t = c/(t+1)$ satisfies both; $\eta_t = c/\sqrt{t+1}$ fails square-summability; a constant step satisfies neither.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The accompanying notebook compares full-batch GD against SGD on a 1-D least-squares loss; empirically verifies $\mathrm{Var}(\hat g_B) \propto 1/B$ for $B \in \{1, 8, 64, 256\}$; runs SGD on the smooth non-convex toy $F(\theta) = \theta^2/2 + 0.5\sin(5\theta)$ to display $T^{-1/2}$ decay of the running average of $\|\nabla F(\theta_t)\|^2$; and contrasts a constant step (which plateaus at a noise floor) with $\eta_t = c/(t+1)$ (which converges).
+
+\subsection*{Connection to LLMs}
+
+Pre-training a language model is mini-batch SGD on the cross-entropy loss (Chapter 11) of next-token prediction. The ``batch size'' of scaling-law papers is exactly the $B$ of Theorem 13.1; doubling it halves the per-step gradient variance but doubles the FLOPs per step. The $O(1/\sqrt{T})$ rate of Theorem 13.2 is why pre-training, even of huge models, must consume \emph{many} tokens --- there is no $1/T$ shortcut without strong convexity. In practice we use AdamW (Chapter 14), which adds momentum and per-coordinate adaptive scaling on top of the SGD skeleton derived here; the convergence intuition (variance reduction by batching, noise floor $\propto \eta \sigma^2/B$, $1/\sqrt{T}$ asymptotics) carries over essentially unchanged.
 
 % --- CHAPTER 13 END ---
 
@@ -906,7 +1696,120 @@ The convex theory is a load-bearing analogy: the only place where the rates are 
 \section*{Chapter 14: Momentum, RMSProp, AdamW: derivation and bias-correction proof}
 \addcontentsline{toc}{section}{Chapter 14: Momentum, RMSProp, AdamW: derivation and bias-correction proof}
 
-\emph{Stub chapter --- will be filled by Phase 2 chapter agent.}
+\subsection*{Motivation}
+
+Chapter 13 established that stochastic gradient descent (SGD) converges, but its rate is governed by the condition number $\kappa = L/\mu$ of the loss landscape. For deep networks --- and for transformer language models in particular --- $\kappa$ can be astronomical, with curvature varying by many orders of magnitude across coordinates. Plain SGD wastes most of its updates fighting oscillation in stiff directions while crawling along flat ones. Chapter 14 builds the optimizers that fix both pathologies: \emph{momentum} smooths the trajectory, \emph{RMSProp} rescales per coordinate, \emph{Adam} combines both with bias correction, and \emph{AdamW} decouples weight decay so it survives Adam's rescaling. AdamW is the optimizer behind essentially every transformer pre-training run from GPT-2 onward (forward reference: Chapter 27).
+
+\subsection*{Definitions}
+
+\begin{definition}[Polyak's heavy-ball momentum]
+Given gradient estimate $g_t = \nabla f(\theta_t; \xi_t)$ and momentum coefficient $\beta \in [0,1)$,
+\[
+v_{t+1} = \beta v_t + g_t, \qquad \theta_{t+1} = \theta_t - \eta\, v_{t+1},
+\]
+with $v_0 = 0$. The state $v_t$ accumulates an exponentially weighted history of past gradients.
+\end{definition}
+
+\begin{definition}[Nesterov accelerated gradient]
+NAG evaluates the gradient at the look-ahead point $\theta_t - \eta\beta v_t$ rather than at $\theta_t$. Empirically it improves the constant factor on convex problems; in deep learning practice it is a minor variation on heavy-ball.
+\end{definition}
+
+\begin{definition}[RMSProp]
+With $\beta_2 \in [0,1)$ and small $\varepsilon > 0$,
+\[
+v_t = \beta_2 v_{t-1} + (1-\beta_2)\, g_t^{\odot 2}, \qquad \theta_{t+1} = \theta_t - \eta\, g_t \oslash (\sqrt{v_t} + \varepsilon),
+\]
+where $\odot,\oslash$ are element-wise. RMSProp normalizes each coordinate by an EMA of its squared gradient.
+\end{definition}
+
+\begin{definition}[Adam]
+\begin{align*}
+m_t &= \beta_1 m_{t-1} + (1-\beta_1) g_t, \\
+v_t &= \beta_2 v_{t-1} + (1-\beta_2) g_t^{\odot 2}, \\
+\hat m_t &= \frac{m_t}{1-\beta_1^t}, \quad \hat v_t = \frac{v_t}{1-\beta_2^t}, \\
+\theta_{t+1} &= \theta_t - \eta\, \hat m_t \oslash (\sqrt{\hat v_t} + \varepsilon).
+\end{align*}
+Defaults: $\beta_1 = 0.9$, $\beta_2 = 0.999$, $\varepsilon = 10^{-8}$.
+\end{definition}
+
+\begin{definition}[AdamW: decoupled weight decay]
+\[
+\theta_{t+1} = \theta_t - \eta\!\left(\hat m_t \oslash (\sqrt{\hat v_t} + \varepsilon) + \lambda\, \theta_t\right).
+\]
+The decay term is applied directly to the parameters and is \emph{not} funneled through the $\hat v_t$ rescaling.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{lemma}[EMA closed form]
+With $m_0 = 0$, the recursion $m_t = \beta_1 m_{t-1} + (1-\beta_1) g_t$ unrolls to
+\[
+m_t = (1-\beta_1)\sum_{i=1}^{t} \beta_1^{\,t-i}\, g_i.
+\]
+\end{lemma}
+\begin{proof}
+Induction on $t$. Base $t=1$: $m_1 = (1-\beta_1) g_1$. Step: assume the formula for $t-1$; then
+\begin{align*}
+m_t &= \beta_1\Bigl[(1-\beta_1)\sum_{i=1}^{t-1}\beta_1^{t-1-i}g_i\Bigr] + (1-\beta_1)g_t \\
+&= (1-\beta_1)\Bigl[\sum_{i=1}^{t-1}\beta_1^{t-i}g_i + g_t\Bigr] = (1-\beta_1)\sum_{i=1}^{t}\beta_1^{t-i}g_i. \qedhere
+\end{align*}
+\end{proof}
+
+\begin{theorem}[Bias correction for Adam, first moment]
+Assume $g_t$ is stationary with $\mathbb{E}[g_t] = g$. Then $\mathbb{E}[m_t] = (1 - \beta_1^t)\, g$, hence $\mathbb{E}[\hat m_t] = g$ for every $t \geq 1$.
+\end{theorem}
+\begin{proof}
+By the lemma and linearity of expectation,
+\[
+\mathbb{E}[m_t] = (1-\beta_1)\sum_{i=1}^t \beta_1^{t-i}\, \mathbb{E}[g_i] = (1-\beta_1)\, g \sum_{j=0}^{t-1}\beta_1^{j} = (1-\beta_1)\, g\, \frac{1 - \beta_1^t}{1-\beta_1} = (1-\beta_1^t)\, g.
+\]
+Dividing by $1 - \beta_1^t$ yields $\mathbb{E}[\hat m_t] = g$.
+\end{proof}
+
+The identical argument with $g_t^{\odot 2}$ in place of $g_t$ shows $\mathbb{E}[\hat v_t] = \mathbb{E}[g_t^{\odot 2}]$ under stationarity. Without bias correction, $m_1 = (1-\beta_1)g_1 \approx 0.1\, g$ at the default $\beta_1 = 0.9$ --- a tenfold underestimate that would cripple the first hundred or so steps of training.
+
+\begin{proposition}[Momentum as a low-pass filter]
+For heavy-ball with $v_0 = 0$, $v_t = \sum_{i=1}^t \beta^{\,t-i} g_i$. The effective averaging horizon is $\sum_{j=0}^\infty \beta^j = 1/(1-\beta)$; e.g.\ $\beta = 0.9$ gives a horizon of about $10$ steps. High-frequency gradient noise is attenuated; the consistent low-frequency signal accumulates.
+\end{proposition}
+\begin{proof}
+Identical unrolling to the Adam lemma but without the $(1-\beta)$ prefactor. The geometric series gives $\sum_{j=0}^{t-1}\beta^j \to 1/(1-\beta)$.
+\end{proof}
+
+\begin{theorem}[Heavy-ball acceleration on convex quadratics, sketch]
+For $f(\theta) = \tfrac{1}{2}\theta^\top A \theta$ with $\mu I \preceq A \preceq L I$ and $\kappa = L/\mu$, GD requires $O(\kappa \log \tfrac{1}{\epsilon})$ steps to reach $\epsilon$-accuracy, while heavy-ball with optimally tuned $\eta, \beta$ achieves $O(\sqrt{\kappa}\log \tfrac{1}{\epsilon})$.
+\end{theorem}
+\begin{proof}[Sketch]
+Diagonalize $A = U\Lambda U^\top$ and decompose $\theta_t$ in eigen-coordinates. In an eigen-direction with eigenvalue $\lambda \in [\mu, L]$ the heavy-ball recurrence reads
+\[
+\binom{c_{t+1}}{c_t} = M_\lambda \binom{c_t}{c_{t-1}}, \qquad M_\lambda = \begin{pmatrix} 1 + \beta - \eta\lambda & -\beta \\ 1 & 0 \end{pmatrix}.
+\]
+The convergence rate is $\max_{\lambda \in [\mu, L]} \rho(M_\lambda)$, where $\rho$ is the spectral radius. The eigenvalues of $M_\lambda$ satisfy $z^2 - (1+\beta-\eta\lambda)z + \beta = 0$. With
+\[
+\eta = \frac{4}{(\sqrt{L}+\sqrt{\mu})^2}, \qquad \beta = \left(\frac{\sqrt{L}-\sqrt{\mu}}{\sqrt{L}+\sqrt{\mu}}\right)^2,
+\]
+both roots are complex conjugate with modulus $\sqrt{\beta} = 1 - 2/(\sqrt{\kappa}+1) = 1 - O(1/\sqrt{\kappa})$ uniformly in $\lambda$, giving the claimed $\sqrt{\kappa}$ acceleration.
+\end{proof}
+
+\begin{proposition}[Decoupled weight decay $\neq$ $L_2$ regularization for Adam]
+For SGD, augmenting the loss by $\tfrac{\lambda}{2}\|\theta\|^2$ adds $\lambda\theta$ to the gradient, producing the multiplicative shrinkage $\theta \mapsto (1-\eta\lambda)\theta$; the two formulations coincide. For Adam, the $L_2$ term enters $g_t$ and is rescaled by $1/(\sqrt{\hat v_t}+\varepsilon)$: parameters with large historical gradients are decayed less, parameters with small historical gradients decayed more. AdamW restores the intended uniform shrinkage by applying $\lambda\theta_t$ outside the adaptive rescaling.
+\end{proposition}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+def adam_step(theta, g, m, v, t, eta=1e-3, b1=0.9, b2=0.999, eps=1e-8):
+    m = b1*m + (1 - b1)*g
+    v = b2*v + (1 - b2)*g*g
+    m_hat = m / (1 - b1**t)
+    v_hat = v / (1 - b2**t)
+    theta = theta - eta * m_hat / (np.sqrt(v_hat) + eps)
+    return theta, m, v
+\end{verbatim}
+AdamW differs by a single line: \texttt{theta = theta - eta*(m\_hat/(np.sqrt(v\_hat)+eps) + lam*theta)}.
+
+\subsection*{Connection to LLMs}
+
+AdamW is the universal pre-training optimizer for transformers (GPT-2/3/4 family, Llama, Mistral, Gemma). Two facts from the analysis above explain why. (i) Per-coordinate rescaling matters: embedding rows, LayerNorm scales, and dense projection weights see gradients differing in magnitude by 3--6 orders of magnitude; only adaptive optimizers train them all under one global learning rate. (ii) Decoupled weight decay is essential for generalization at scale --- with vanilla $L_2$-Adam, infrequently-updated parameters such as rare-token embeddings would be barely regularized while high-gradient parameters would be over-shrunk. Bias correction matters most in the first $\sim 10^1$--$10^3$ steps; the $1/(1-\beta_1)$ effective horizon explains why warmup of a few hundred steps is standard. Concrete AdamW configuration ($\lambda = 0.1$, $\beta_2 = 0.95$, gradient clipping, warmup-then-decay schedule) is taken up in Chapter 27.
 
 % --- CHAPTER 14 END ---
 

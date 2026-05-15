@@ -1,0 +1,157 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Random Variables, Distributions, CDF / PMF / PDF\n",
+      "\n",
+      "A random variable $X:\\Omega\\to\\mathbb{R}$ pushes the probability $\\mathbb{P}$ on $(\\Omega,\\mathcal{F})$ to a distribution $\\mu_X$ on $\\mathbb{R}$. We will (1) build a discrete RV (categorical) by softmaxing fixed logits, (2) compute its PMF and CDF, and (3) sample from it via inverse-CDF.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "# Categorical with K=5 outcomes from fixed logits (think: tiny LM head).\n",
+      "logits = np.array([2.0, 1.0, 0.5, -0.5, 0.0])\n",
+      "exp_z = np.exp(logits - logits.max())  # numerical stability\n",
+      "pmf = exp_z / exp_z.sum()\n",
+      "\n",
+      "print('PMF :', np.round(pmf, 4))\n",
+      "print('Sum :', pmf.sum())  # must be 1 (Theorem 9.2)\n",
+      "\n",
+      "cdf = np.cumsum(pmf)\n",
+      "print('CDF :', np.round(cdf, 4))\n",
+      "\n",
+      "# Inverse-CDF sampling (Theorem 9.4): draw U ~ Uniform[0,1], output min k with CDF[k] >= U.\n",
+      "n = 10_000\n",
+      "u = np.random.rand(n)\n",
+      "samples = np.searchsorted(cdf, u, side='left')\n",
+      "\n",
+      "empirical = np.bincount(samples, minlength=5) / n\n",
+      "print('Empirical :', np.round(empirical, 4))\n",
+      "print('True PMF  :', np.round(pmf, 4))\n",
+      "print('Max |emp - true| :', np.max(np.abs(empirical - pmf)))\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Continuous distributions and densities\n",
+      "\n",
+      "For a continuous RV, $\\mathbb{P}(X\\in A) = \\int_A f_X(x)\\,dx$. The standard normal has $f_X(x)=\\tfrac{1}{\\sqrt{2\\pi}}e^{-x^2/2}$. Theorem 9.2 forces $\\int_{\\mathbb{R}} f_X = 1$. We verify by Riemann sum and build the CDF by cumulative sum.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "def standard_normal_pdf(x):\n",
+      "    return np.exp(-0.5 * x * x) / np.sqrt(2 * np.pi)\n",
+      "\n",
+      "# Truncate to [-8, 8]: the tail mass beyond is < 1e-15.\n",
+      "x_grid = np.linspace(-8.0, 8.0, 16_001)\n",
+      "dx = x_grid[1] - x_grid[0]\n",
+      "f_vals = standard_normal_pdf(x_grid)\n",
+      "\n",
+      "total_mass = np.sum(f_vals) * dx  # midpoint/Riemann sum\n",
+      "print(f'Numerical integral of f_X : {total_mass:.10f}  (target 1)')\n",
+      "\n",
+      "# CDF via cumulative sum of f_vals * dx.\n",
+      "F_vals = np.cumsum(f_vals) * dx\n",
+      "for x in [-2.0, -1.0, 0.0, 1.0, 2.0]:\n",
+      "    idx = int(np.searchsorted(x_grid, x))\n",
+      "    print(f'F_X({x:+.1f}) = {F_vals[idx]:.6f}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Change of variables\n",
+      "\n",
+      "Theorem 9.3: if $Y = g(X)$ with $g$ strictly monotone $C^1$, then $f_Y(y) = f_X(g^{-1}(y))\\,|(g^{-1})'(y)|$.\n",
+      "\n",
+      "Take $X\\sim\\mathrm{Uniform}[0,1]$ so $f_X = 1$ on $[0,1]$, and $g(x) = -\\ln x$ on $(0,1]$. Then $g^{-1}(y) = e^{-y}$, $(g^{-1})'(y) = -e^{-y}$, and\n",
+      "$$f_Y(y) = 1 \\cdot |-e^{-y}| = e^{-y},\\quad y \\geq 0,$$\n",
+      "i.e. $Y\\sim\\mathrm{Exp}(1)$. We confirm with a histogram of 10000 samples.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "x_samples = np.random.rand(10_000)         # X ~ U[0,1]\n",
+      "y_samples = -np.log(x_samples)             # Y = g(X) = -ln X\n",
+      "\n",
+      "# Empirical histogram on [0, 6]\n",
+      "edges = np.linspace(0, 6, 25)\n",
+      "counts, _ = np.histogram(y_samples, bins=edges)\n",
+      "centers = 0.5 * (edges[:-1] + edges[1:])\n",
+      "widths = np.diff(edges)\n",
+      "emp_density = counts / (counts.sum() * widths)\n",
+      "true_density = np.exp(-centers)            # f_Y(y) = e^{-y}\n",
+      "\n",
+      "print(' y center   empirical f_Y   true f_Y   |diff|')\n",
+      "for c, e, t in zip(centers[:8], emp_density[:8], true_density[:8]):\n",
+      "    print(f'  {c:5.3f}      {e:8.4f}     {t:8.4f}   {abs(e-t):.4f}')\n",
+      "\n",
+      "print(f'\\nSample mean of Y : {y_samples.mean():.4f}  (true E[Y] = 1)')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Inverse-CDF sampling, revisited\n",
+      "\n",
+      "We re-run inverse-CDF sampling on the categorical from cell 2 and watch the empirical PMF converge to the true PMF as $n$ grows. This is exactly how a language model converts a softmax row into a token id (modulo temperature/top-$k$/top-$p$): cumulative-sum the probabilities, draw $U\\sim U[0,1]$, output the first index whose cumulative probability $\\geq U$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "logits = np.array([2.0, 1.0, 0.5, -0.5, 0.0])\n",
+      "exp_z = np.exp(logits - logits.max())\n",
+      "pmf = exp_z / exp_z.sum()\n",
+      "cdf = np.cumsum(pmf)\n",
+      "\n",
+      "def inverse_cdf_sample(cdf, n, rng):\n",
+      "    u = rng.random(n)\n",
+      "    return np.searchsorted(cdf, u, side='left')\n",
+      "\n",
+      "rng = np.random.default_rng(0)\n",
+      "for n in [100, 1_000, 10_000, 100_000]:\n",
+      "    s = inverse_cdf_sample(cdf, n, rng)\n",
+      "    emp = np.bincount(s, minlength=len(pmf)) / n\n",
+      "    err = np.max(np.abs(emp - pmf))\n",
+      "    print(f'n = {n:>7}  max |emp - true| = {err:.4f}')\n",
+      "\n",
+      "print('\\nTrue PMF:', np.round(pmf, 4))\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

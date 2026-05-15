@@ -1,0 +1,179 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 10 — Expectation, Variance, Covariance, Jensen\n",
+      "\n",
+      "We compress a distribution into summary numbers: the **expectation** $\\mathbb{E}[X]$ and the **variance** $\\mathrm{Var}(X) = \\mathbb{E}[(X - \\mathbb{E}X)^2]$. We then verify the most useful structural facts numerically: linearity (no independence required), the Jensen inequality for convex $\\phi$, Markov, Chebyshev, and the weak law of large numbers.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "execution_count": null,
+    "outputs": [],
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "# Discrete distribution on 5 outcomes.\n",
+      "values = np.array([-2.0, -1.0, 0.0, 1.0, 3.0])\n",
+      "probs  = np.array([0.10, 0.25, 0.30, 0.25, 0.10])\n",
+      "assert np.isclose(probs.sum(), 1.0)\n",
+      "\n",
+      "EX_analytic   = float(np.sum(values * probs))\n",
+      "VarX_analytic = float(np.sum((values - EX_analytic)**2 * probs))\n",
+      "\n",
+      "# Sample 10000 times.\n",
+      "samples = np.random.choice(values, size=10000, p=probs)\n",
+      "EX_emp   = float(samples.mean())\n",
+      "VarX_emp = float(samples.var(ddof=0))\n",
+      "\n",
+      "print(f'E[X]  analytic = {EX_analytic:.6f}   empirical = {EX_emp:.6f}')\n",
+      "print(f'Var X analytic = {VarX_analytic:.6f}   empirical = {VarX_emp:.6f}')\n"
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Linearity of expectation — without independence\n",
+      "\n",
+      "$\\mathbb{E}[aX + bY] = a\\mathbb{E}[X] + b\\mathbb{E}[Y]$ holds even when $X$ and $Y$ are *perfectly* dependent. Below, $Y = 2X + 1$, so $X$ determines $Y$ exactly; linearity is unaffected.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "execution_count": null,
+    "outputs": [],
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "p = 0.3\n",
+      "n = 10000\n",
+      "X = (np.random.rand(n) < p).astype(np.float64)   # Bernoulli(p)\n",
+      "Y = 2.0 * X + 1.0                                # perfectly determined by X\n",
+      "\n",
+      "EX     = X.mean()\n",
+      "EY     = Y.mean()\n",
+      "EX_pY  = (X + Y).mean()\n",
+      "\n",
+      "print(f'E[X]        ~ {EX:.4f}    (analytic = {p})')\n",
+      "print(f'E[Y]        ~ {EY:.4f}    (analytic = {2*p + 1})')\n",
+      "print(f'E[X + Y]    ~ {EX_pY:.4f}  vs  E[X] + E[Y] = {EX + EY:.4f}')\n",
+      "\n",
+      "# Covariance is maximal here, but linearity still holds.\n",
+      "cov_XY = np.cov(X, Y, ddof=0)[0, 1]\n",
+      "print(f'Cov(X, Y) = {cov_XY:.4f}   (X, Y are perfectly correlated)')\n"
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Jensen's inequality\n",
+      "\n",
+      "If $\\phi$ is convex, then $\\phi(\\mathbb{E}[X]) \\le \\mathbb{E}[\\phi(X)]$.\n",
+      "\n",
+      "We test two convex functions: $\\phi(x) = e^x$ on $X \\sim \\mathrm{Unif}\\{-1,+1\\}$, and $\\phi(p) = -\\log p$ on a categorical distribution (which connects directly to the entropy of Chapter 11).\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "execution_count": null,
+    "outputs": [],
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "# (1) phi(x) = exp(x), X uniform on {-1, +1}\n",
+      "X = np.random.choice([-1.0, 1.0], size=20000)\n",
+      "phi_of_EX = np.exp(X.mean())              # ~ exp(0) = 1\n",
+      "E_phi_X   = np.exp(X).mean()              # ~ (e + 1/e)/2 ~ 1.5431\n",
+      "print(f'phi(E[X]) = {phi_of_EX:.6f}')\n",
+      "print(f'E[phi(X)] = {E_phi_X:.6f}   (analytic = {(np.e + 1/np.e)/2:.6f})')\n",
+      "print(f'Jensen holds (E[phi(X)] >= phi(E[X])): {E_phi_X >= phi_of_EX}')\n",
+      "\n",
+      "# (2) phi(p) = -log p, applied to outcomes drawn from a categorical p_true.\n",
+      "# E[-log p_true(X)] = entropy H(p_true).  By Jensen, H(p) >= -log E[p(X)] = -log sum p^2.\n",
+      "p_true = np.array([0.5, 0.25, 0.15, 0.10])\n",
+      "K = len(p_true)\n",
+      "draws  = np.random.choice(K, size=50000, p=p_true)\n",
+      "neg_log_p_X = -np.log(p_true[draws])\n",
+      "H_emp = neg_log_p_X.mean()\n",
+      "H_an  = -float(np.sum(p_true * np.log(p_true)))\n",
+      "jensen_lb = -np.log(np.sum(p_true**2))      # >= 0; tight only at uniform\n",
+      "print(f'\\nEntropy H(p_true)  empirical = {H_emp:.6f}   analytic = {H_an:.6f}')\n",
+      "print(f'Jensen lower bound -log E[p(X)] = {jensen_lb:.6f}   (<= H)')\n"
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Markov, Chebyshev, and the weak law of large numbers\n",
+      "\n",
+      "Markov: $\\mathbb{P}(X \\ge a) \\le \\mathbb{E}[X]/a$ for $X \\ge 0$.\n",
+      "\n",
+      "Chebyshev: $\\mathbb{P}(|X - \\mu| \\ge k\\sigma) \\le 1/k^2$.\n",
+      "\n",
+      "Weak LLN: for i.i.d. $X_i$ with finite variance, $\\bar X_n \\to \\mu$ in probability — proved directly via Chebyshev applied to $\\bar X_n$, since $\\mathrm{Var}(\\bar X_n) = \\sigma^2/n$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "execution_count": null,
+    "outputs": [],
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "# X_i ~ Uniform[0, 1], so mu = 1/2 and sigma^2 = 1/12.\n",
+      "mu, sigma2 = 0.5, 1.0/12.0\n",
+      "ns = np.unique(np.round(np.geomspace(10, 10000, num=12)).astype(int))\n",
+      "\n",
+      "rows = []\n",
+      "for n in ns:\n",
+      "    Xn = np.random.uniform(0.0, 1.0, size=n)\n",
+      "    bar = float(Xn.mean())\n",
+      "    band = float(np.sqrt(sigma2 / n))           # one std-dev of bar X_n\n",
+      "    rows.append((n, bar, band))\n",
+      "\n",
+      "print(f'{\"n\":>7} {\"bar X_n\":>12} {\"|bar - mu|\":>14} {\"sigma/sqrt(n)\":>16}')\n",
+      "for n, bar, band in rows:\n",
+      "    print(f'{n:>7d} {bar:>12.6f} {abs(bar-mu):>14.6f} {band:>16.6f}')\n",
+      "\n",
+      "# Try to plot; fall back to the table above if matplotlib is unavailable.\n",
+      "try:\n",
+      "    import matplotlib.pyplot as plt\n",
+      "    ns_arr   = np.array([r[0] for r in rows], dtype=float)\n",
+      "    bars_arr = np.array([r[1] for r in rows], dtype=float)\n",
+      "    band_arr = np.array([r[2] for r in rows], dtype=float)\n",
+      "    plt.figure(figsize=(7, 4))\n",
+      "    plt.semilogx(ns_arr, bars_arr, 'o-', label=r'$\\bar X_n$')\n",
+      "    plt.fill_between(ns_arr, mu - 2*band_arr, mu + 2*band_arr,\n",
+      "                     alpha=0.2, label=r'$\\mu \\pm 2\\sigma/\\sqrt{n}$ (Chebyshev / CLT band)')\n",
+      "    plt.axhline(mu, linestyle='--', label=r'$\\mu = 1/2$')\n",
+      "    plt.xlabel('n'); plt.ylabel('sample mean'); plt.legend()\n",
+      "    plt.title('Weak law of large numbers, Uniform[0,1]')\n",
+      "    plt.tight_layout()\n",
+      "    plt.show()\n",
+      "except Exception as exc:\n",
+      "    print(f'matplotlib unavailable ({exc!r}); the table above is the fallback view.')\n"
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Connection to LLMs\n",
+      "\n",
+      "Training loss is $\\mathcal{L}(\\theta) = \\mathbb{E}_{x \\sim \\mathcal{D}}[\\ell(\\theta; x)]$. Mini-batch SGD replaces this expectation by a sample mean of size $B$. By **linearity of expectation**, the SGD gradient is unbiased: $\\mathbb{E}[\\nabla \\hat{\\mathcal{L}}] = \\nabla \\mathcal{L}$. By the **variance-of-a-sum** identity (with independence within a batch), $\\mathrm{Var}(\\nabla \\hat{\\mathcal{L}}) = \\Theta(1/B)$ — larger batches give a lower-variance estimator, and the **weak LLN** says we recover the true loss in probability as $B \\to \\infty$. **Jensen's inequality** powers the ELBO of variational inference (Chapter 22). Variance-reduction techniques for the SGD gradient are revisited in Chapter 13.\n"
+    ]
+  }
+]

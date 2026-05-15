@@ -1,0 +1,150 @@
+\subsection*{Motivation}
+
+Random variables (Chapter~9) describe uncertain outcomes. To compress an entire distribution into a single representative number we use the \emph{expectation}; to describe spread and joint linear association we use \emph{variance} and \emph{covariance}. Together with \emph{Jensen's inequality}, these objects form the structural backbone of every loss function and convergence proof in modern deep learning. Training an LLM is, formally, the minimization of an expectation $\mathbb{E}_{x\sim\mathcal{D}}[\ell(\theta;x)]$; SGD is a Monte Carlo estimator of that expectation; the variance of the estimator dictates convergence speed (Chapter~13).
+
+\subsection*{Definitions}
+
+\begin{definition}[Expectation]
+For a discrete random variable $X$ with pmf $p_X$,
+\[
+\mathbb{E}[X] \;=\; \sum_x x\,p_X(x), \qquad \text{provided } \sum_x |x|\,p_X(x) < \infty.
+\]
+For continuous $X$ with density $f_X$,
+\[
+\mathbb{E}[X] \;=\; \int_{\mathbb{R}} x\,f_X(x)\,dx,
+\]
+provided the integral is absolutely convergent. In full generality, $\mathbb{E}[X] := \int_\Omega X\,d\mathbb{P}$ is the Lebesgue integral against the underlying probability measure (cited without proof; see Billingsley, \emph{Probability and Measure}).
+\end{definition}
+
+\begin{definition}[Variance and covariance]
+For $X$ with $\mathbb{E}[X^2] < \infty$, $\mathrm{Var}(X) := \mathbb{E}[(X - \mathbb{E}X)^2]$, and $\sigma_X := \sqrt{\mathrm{Var}(X)}$. For $X,Y$ with finite variance,
+\[
+\mathrm{Cov}(X,Y) := \mathbb{E}\big[(X-\mathbb{E}X)(Y-\mathbb{E}Y)\big], \qquad
+\rho_{X,Y} := \frac{\mathrm{Cov}(X,Y)}{\sigma_X\sigma_Y} \in [-1,1].
+\]
+The bound $|\rho|\le 1$ is the Cauchy--Schwarz inequality applied to the inner product $\langle U,V\rangle := \mathbb{E}[UV]$ on the Hilbert space $L^2(\Omega,\mathcal{F},\mathbb{P})$.
+\end{definition}
+
+\begin{definition}[Conditional expectation]
+For discrete $X,Y$ and any $y$ with $p_Y(y) > 0$,
+\[
+\mathbb{E}[X\mid Y = y] \;=\; \sum_x x\,p_{X\mid Y}(x\mid y).
+\]
+Viewed as $y$ varies, $\mathbb{E}[X\mid Y]$ is itself a random variable: a measurable function of $Y$. The general definition characterizes $\mathbb{E}[X\mid \mathcal{G}]$ as the unique (a.s.) $\mathcal{G}$-measurable random variable satisfying $\int_A \mathbb{E}[X\mid\mathcal{G}]\,d\mathbb{P} = \int_A X\,d\mathbb{P}$ for every $A\in\mathcal{G}$ (Radon--Nikodym).
+\end{definition}
+
+\subsection*{Theorems with proofs}
+
+\begin{theorem}[Linearity of expectation]
+For random variables $X, Y$ with finite expectation and scalars $a, b\in\mathbb{R}$,
+\[
+\mathbb{E}[aX + bY] \;=\; a\,\mathbb{E}[X] + b\,\mathbb{E}[Y].
+\]
+Independence is \emph{not} required.
+\end{theorem}
+
+\begin{proof}
+In the discrete case, with joint pmf $p_{X,Y}$,
+\[
+\mathbb{E}[aX+bY] = \sum_{x,y}(ax+by)\,p_{X,Y}(x,y) = a\sum_{x,y} x\,p_{X,Y}(x,y) + b\sum_{x,y} y\,p_{X,Y}(x,y).
+\]
+Marginalizing, $\sum_y p_{X,Y}(x,y) = p_X(x)$ and $\sum_x p_{X,Y}(x,y) = p_Y(y)$, giving $a\,\mathbb{E}[X] + b\,\mathbb{E}[Y]$. The continuous case is identical with sums replaced by integrals; in full generality, linearity is a defining property of the Lebesgue integral.
+\end{proof}
+
+\begin{theorem}[Variance of a sum]
+\[
+\mathrm{Var}(X+Y) \;=\; \mathrm{Var}(X) + \mathrm{Var}(Y) + 2\,\mathrm{Cov}(X,Y).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $\mu_X = \mathbb{E}[X]$, $\mu_Y = \mathbb{E}[Y]$. By linearity, $\mathbb{E}[X+Y] = \mu_X + \mu_Y$. Then
+\begin{align*}
+\mathrm{Var}(X+Y) &= \mathbb{E}\!\left[((X-\mu_X)+(Y-\mu_Y))^2\right] \\
+&= \mathbb{E}[(X-\mu_X)^2] + \mathbb{E}[(Y-\mu_Y)^2] + 2\,\mathbb{E}[(X-\mu_X)(Y-\mu_Y)] \\
+&= \mathrm{Var}(X) + \mathrm{Var}(Y) + 2\,\mathrm{Cov}(X,Y). \qedhere
+\end{align*}
+\end{proof}
+
+\begin{remark}
+If $X\perp Y$ then $\mathrm{Cov}(X,Y)=0$ and variances add. The converse is false: zero covariance does not imply independence.
+\end{remark}
+
+\begin{theorem}[Jensen's inequality]
+Let $\phi:\mathbb{R}\to\mathbb{R}$ be convex and $X$ a random variable with $\mathbb{E}|X|<\infty$ and $\mathbb{E}|\phi(X)|<\infty$. Then
+\[
+\phi(\mathbb{E}[X]) \;\le\; \mathbb{E}[\phi(X)].
+\]
+\end{theorem}
+
+\begin{proof}
+Recall (Chapter~7) that a convex function on $\mathbb{R}$ admits a \emph{supporting line} at every interior point of its domain: at $x_0 := \mathbb{E}[X]$ there exists a subgradient $g \in \partial\phi(x_0)$ such that
+\[
+\phi(x) \;\ge\; \phi(x_0) + g(x - x_0) \qquad \text{for all } x \in \mathbb{R}.
+\]
+Substitute $X$ pointwise and take expectations. By linearity (Theorem above),
+\[
+\mathbb{E}[\phi(X)] \;\ge\; \phi(x_0) + g\,(\mathbb{E}[X] - x_0) \;=\; \phi(\mathbb{E}[X]),
+\]
+since $\mathbb{E}[X] - x_0 = 0$.
+\end{proof}
+
+\begin{theorem}[Markov's inequality]
+Let $X \ge 0$ a.s. and $a > 0$. Then
+\[
+\mathbb{P}(X \ge a) \;\le\; \frac{\mathbb{E}[X]}{a}.
+\]
+\end{theorem}
+
+\begin{proof}
+Pointwise, $a\cdot \mathbf{1}_{\{X\ge a\}} \le X$: when $X \ge a$, both sides are bounded above by $X$; when $X < a$, the left side is $0$ and $X \ge 0$. Take expectations: $a\,\mathbb{P}(X\ge a) \le \mathbb{E}[X]$, then divide by $a$.
+\end{proof}
+
+\begin{theorem}[Chebyshev's inequality]
+Let $\mathbb{E}[X] = \mu$ and $\sigma^2 := \mathrm{Var}(X) < \infty$. For $k > 0$,
+\[
+\mathbb{P}(|X - \mu| \ge k\sigma) \;\le\; \frac{1}{k^2}.
+\]
+\end{theorem}
+
+\begin{proof}
+Apply Markov to $Y := (X - \mu)^2 \ge 0$ with $a = k^2\sigma^2$:
+\[
+\mathbb{P}((X-\mu)^2 \ge k^2\sigma^2) \;\le\; \frac{\mathbb{E}[(X-\mu)^2]}{k^2\sigma^2} \;=\; \frac{1}{k^2}.
+\]
+The event $\{(X-\mu)^2 \ge k^2\sigma^2\}$ equals $\{|X-\mu| \ge k\sigma\}$.
+\end{proof}
+
+\begin{theorem}[Weak law of large numbers]
+Let $X_1, X_2, \dots$ be i.i.d.\ with $\mathbb{E}[X_i] = \mu$ and $\mathrm{Var}(X_i) = \sigma^2 < \infty$. Set $\bar{X}_n := \frac{1}{n}\sum_{i=1}^n X_i$. Then for every $\epsilon > 0$,
+\[
+\mathbb{P}(|\bar{X}_n - \mu| \ge \epsilon) \xrightarrow{n\to\infty} 0.
+\]
+\end{theorem}
+
+\begin{proof}
+By linearity, $\mathbb{E}[\bar{X}_n] = \mu$. By the variance-of-a-sum theorem and independence (covariances vanish), $\mathrm{Var}(\bar{X}_n) = \sigma^2/n$. Chebyshev's inequality yields
+\[
+\mathbb{P}(|\bar{X}_n - \mu| \ge \epsilon) \;\le\; \frac{\mathrm{Var}(\bar{X}_n)}{\epsilon^2} \;=\; \frac{\sigma^2}{n\epsilon^2} \;\to\; 0. \qedhere
+\]
+\end{proof}
+
+\subsection*{Code sketch}
+
+The companion notebook (\texttt{cells.json}) verifies each result numerically: a five-outcome categorical for analytic vs.\ empirical $\mathbb{E},\mathrm{Var}$; the pair $(X, 2X+1)$ for linearity without independence; $\phi(x)=e^x$ on $\mathrm{Unif}\{-1,+1\}$ for Jensen; and i.i.d.\ $\mathrm{Unif}[0,1]$ samples for the LLN inside a Chebyshev confidence band.
+
+\subsection*{Connection to LLMs}
+
+Every modern language-model objective has the form
+\[
+\mathcal{L}(\theta) \;=\; \mathbb{E}_{x\sim\mathcal{D}}[\ell(\theta;x)],
+\]
+where $\mathcal{D}$ is the data distribution and $\ell$ is (typically) the next-token cross-entropy loss. The data distribution is intractable, so we replace the expectation by an empirical mean over a mini-batch of size $B$:
+\[
+\hat{\mathcal{L}}(\theta) \;=\; \frac{1}{B}\sum_{i=1}^B \ell(\theta; x_i).
+\]
+Linearity of expectation gives $\mathbb{E}[\nabla\hat{\mathcal{L}}] = \nabla\mathcal{L}$, so the SGD gradient is \emph{unbiased}. Theorem on variance of a sum, plus independence within the batch, yields $\mathrm{Var}(\nabla\hat{\mathcal{L}}) = \Theta(1/B)$ — exactly the reason larger batches give smoother training curves. The weak LLN guarantees recovery of the true loss in probability as $B\to\infty$ (formalized in Chapter~13). Jensen's inequality, applied to $-\log$, underwrites the evidence lower bound (ELBO) of Chapter~22:
+\[
+\log \mathbb{E}_{q}[Z] \;\ge\; \mathbb{E}_q[\log Z], \qquad Z > 0,
+\]
+which is the bedrock of every modern likelihood-based generative model.

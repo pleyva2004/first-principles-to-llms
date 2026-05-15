@@ -1,0 +1,178 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Probability foundations\n",
+      "\n",
+      "A **probability space** is a triple $(\\Omega, \\mathcal{F}, \\mathbb{P})$ where\n",
+      "\n",
+      "- $\\Omega$ is a non-empty *sample space*;\n",
+      "- $\\mathcal{F} \\subseteq 2^{\\Omega}$ is a *$\\sigma$-algebra* (contains $\\Omega$, closed under complements and countable unions);\n",
+      "- $\\mathbb{P}: \\mathcal{F} \\to [0, 1]$ satisfies the **Kolmogorov axioms**: non-negativity, $\\mathbb{P}(\\Omega) = 1$, and countable additivity for disjoint events.\n",
+      "\n",
+      "We instantiate the smallest non-trivial example: two fair dice with $\\Omega = \\{1,\\dots,6\\}^2$, $\\mathcal{F} = 2^{\\Omega}$, and uniform $\\mathbb{P}(A) = |A|/36$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "from itertools import product\n",
+      "\n",
+      "# Build Omega = {1,...,6}^2 explicitly as a frozenset of tuples.\n",
+      "Omega = frozenset(product(range(1, 7), repeat=2))\n",
+      "assert len(Omega) == 36\n",
+      "\n",
+      "def P(A):\n",
+      "    \"\"\"Uniform probability measure on Omega: P(A) = |A| / |Omega|.\"\"\"\n",
+      "    A = set(A)\n",
+      "    assert A.issubset(Omega), 'A must be a subset of Omega'\n",
+      "    return len(A) / len(Omega)\n",
+      "\n",
+      "# (K2) normalization\n",
+      "print('P(Omega) =', P(Omega))\n",
+      "\n",
+      "# (K3) finite additivity on two disjoint events:\n",
+      "# A = first die equals 1; B = first die equals 2 -- disjoint.\n",
+      "A = {w for w in Omega if w[0] == 1}\n",
+      "B = {w for w in Omega if w[0] == 2}\n",
+      "assert A.isdisjoint(B)\n",
+      "print('P(A) + P(B) =', P(A) + P(B), '   P(A union B) =', P(A | B))\n",
+      "assert abs((P(A) + P(B)) - P(A | B)) < 1e-12\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Inclusion-exclusion and the union bound\n",
+      "\n",
+      "For any events $A, B$,\n",
+      "$$\\mathbb{P}(A \\cup B) = \\mathbb{P}(A) + \\mathbb{P}(B) - \\mathbb{P}(A \\cap B).$$\n",
+      "\n",
+      "For any countable family,\n",
+      "$$\\mathbb{P}\\!\\left(\\bigcup_n A_n\\right) \\leq \\sum_n \\mathbb{P}(A_n).$$\n",
+      "\n",
+      "Equality fails as soon as the events overlap.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "# Inclusion-exclusion: A = first die = 6, B = second die = 6.\n",
+      "A = {w for w in Omega if w[0] == 6}\n",
+      "B = {w for w in Omega if w[1] == 6}\n",
+      "lhs = P(A | B)\n",
+      "rhs = P(A) + P(B) - P(A & B)\n",
+      "print(f'P(A cup B) = {lhs:.6f}   P(A) + P(B) - P(A cap B) = {rhs:.6f}')\n",
+      "assert abs(lhs - rhs) < 1e-12\n",
+      "\n",
+      "# Union bound on three events:\n",
+      "# A1 = first die >= 5; A2 = second die >= 5; A3 = sum >= 10.\n",
+      "A1 = {w for w in Omega if w[0] >= 5}\n",
+      "A2 = {w for w in Omega if w[1] >= 5}\n",
+      "A3 = {w for w in Omega if w[0] + w[1] >= 10}\n",
+      "union = A1 | A2 | A3\n",
+      "print(f'P(union) = {P(union):.6f}   sum P(Ai) = {P(A1) + P(A2) + P(A3):.6f}')\n",
+      "assert P(union) <= P(A1) + P(A2) + P(A3) + 1e-12\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Conditional probability and Bayes' theorem\n",
+      "\n",
+      "For $\\mathbb{P}(B) > 0$, $\\mathbb{P}(A \\mid B) = \\mathbb{P}(A \\cap B) / \\mathbb{P}(B)$ and\n",
+      "$$\\mathbb{P}(A \\mid B) = \\frac{\\mathbb{P}(B \\mid A)\\, \\mathbb{P}(A)}{\\mathbb{P}(B)}.$$\n",
+      "\n",
+      "**Disease testing.** Prior $\\mathbb{P}(D) = 0.001$, sensitivity $\\mathbb{P}(+\\mid D) = 0.99$, specificity $\\mathbb{P}(-\\mid D^c) = 0.95$. We compute $\\mathbb{P}(D \\mid +)$ analytically and verify by Monte Carlo.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "prior = 0.001\n",
+      "sens  = 0.99    # P(+ | D)\n",
+      "spec  = 0.95    # P(- | not D), so false-positive rate = 1 - spec = 0.05\n",
+      "fpr   = 1 - spec\n",
+      "\n",
+      "# Law of total probability: P(+) = P(+|D)P(D) + P(+|notD)P(notD)\n",
+      "p_pos = sens * prior + fpr * (1 - prior)\n",
+      "# Bayes: P(D | +)\n",
+      "p_d_given_pos = sens * prior / p_pos\n",
+      "print(f'Analytic P(D | +) = {p_d_given_pos:.6f}')\n",
+      "\n",
+      "# Monte Carlo verification.\n",
+      "np.random.seed(0)\n",
+      "n = 10_000\n",
+      "diseased = np.random.rand(n) < prior\n",
+      "test_pos = np.where(\n",
+      "    diseased,\n",
+      "    np.random.rand(n) < sens,    # given disease, true-positive\n",
+      "    np.random.rand(n) < fpr,     # given no disease, false-positive\n",
+      ")\n",
+      "n_pos = test_pos.sum()\n",
+      "if n_pos > 0:\n",
+      "    mc = (diseased & test_pos).sum() / n_pos\n",
+      "else:\n",
+      "    mc = float('nan')\n",
+      "print(f'Monte Carlo P(D | +)  = {mc:.6f}   (n_pos = {int(n_pos)} of {n})')\n",
+      "print('Note: with prior 0.001 and n=10000, the MC estimate is noisy but order-of-magnitude consistent.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Independence\n",
+      "\n",
+      "Events $A, B$ are **independent** iff $\\mathbb{P}(A \\cap B) = \\mathbb{P}(A)\\mathbb{P}(B)$. This is a *property of the measure*, not a property of the sets.\n",
+      "\n",
+      "On the two-dice space, the events \"first die = 6\" and \"second die = 6\" are independent (the dice are physically uncoupled in the uniform measure). The events \"first die = 6\" and \"sum = 12\" are *not* independent: knowing the sum is 12 forces both dice to be 6.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "A = {w for w in Omega if w[0] == 6}            # first die = 6\n",
+      "B = {w for w in Omega if w[1] == 6}            # second die = 6\n",
+      "C = {w for w in Omega if w[0] + w[1] == 12}    # sum = 12\n",
+      "\n",
+      "print('Independence test for (A, B):')\n",
+      "print(f'  P(A) * P(B)    = {P(A) * P(B):.6f}')\n",
+      "print(f'  P(A cap B)     = {P(A & B):.6f}   --> independent\\n')\n",
+      "\n",
+      "print('Independence test for (A, C):')\n",
+      "print(f'  P(A) * P(C)    = {P(A) * P(C):.6f}')\n",
+      "print(f'  P(A cap C)     = {P(A & C):.6f}   --> NOT independent')\n",
+      "\n",
+      "assert abs(P(A & B) - P(A) * P(B)) < 1e-12\n",
+      "assert abs(P(A & C) - P(A) * P(C)) > 1e-6\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Looking ahead\n",
+      "\n",
+      "A causal language model (Chapter 25) defines, for each context $c$, a probability measure on the finite vocabulary $\\mathcal{V}$ via the softmax output. Every claim in this chapter -- additivity, the union bound, Bayes, total probability, continuity -- transfers verbatim to that measure. Sampling, beam search, nucleus truncation, and importance-weighted training are all operations on a Kolmogorov probability space.\n"
+    ]
+  }
+]

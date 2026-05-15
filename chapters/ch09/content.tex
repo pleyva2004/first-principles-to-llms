@@ -1,0 +1,130 @@
+\subsection*{Motivation}
+
+Chapter 8 built probability spaces $(\Omega, \mathcal{F}, \mathbb{P})$ as the bedrock for modeling uncertainty. But raw $\Omega$ is rarely what we \emph{measure}: we measure a temperature, a token id, a pixel intensity. A \emph{random variable} is the bridge that turns abstract outcomes into real numbers we can sum, integrate, optimize, and---most importantly---differentiate. Every loss function in deep learning is an expectation over random variables; every sampler in a language model is a draw from a distribution; every softmax is a categorical PMF. This chapter formalizes the machinery.
+
+\subsection*{Definitions}
+
+\begin{definition}[Random variable]
+Let $(\Omega, \mathcal{F}, \mathbb{P})$ be a probability space. A function $X: \Omega \to \mathbb{R}$ is a \emph{random variable} (RV) if for every $x \in \mathbb{R}$,
+\[
+\{X \leq x\} := \{\omega \in \Omega : X(\omega) \leq x\} \in \mathcal{F}.
+\]
+Equivalently, $X^{-1}(B) \in \mathcal{F}$ for every Borel $B \in \mathcal{B}(\mathbb{R})$.
+\end{definition}
+
+\begin{definition}[Distribution]
+The \emph{distribution} (or \emph{law}) of $X$ is the pushforward measure $\mu_X$ on $(\mathbb{R}, \mathcal{B}(\mathbb{R}))$,
+\[
+\mu_X(B) = \mathbb{P}(X \in B), \qquad B \in \mathcal{B}(\mathbb{R}).
+\]
+\end{definition}
+
+\begin{definition}[CDF]
+The \emph{cumulative distribution function} of $X$ is $F_X : \mathbb{R} \to [0,1]$,
+\[
+F_X(x) = \mathbb{P}(X \leq x) = \mu_X((-\infty, x]).
+\]
+\end{definition}
+
+\begin{definition}[Discrete RV, PMF]
+$X$ is \emph{discrete} if it takes values in a countable set $S \subset \mathbb{R}$. The \emph{probability mass function} is
+\[
+p_X(x) = \mathbb{P}(X = x), \quad x \in S.
+\]
+\end{definition}
+
+\begin{definition}[Continuous RV, PDF]
+$X$ is \emph{(absolutely) continuous} if there exists a non-negative measurable $f_X : \mathbb{R} \to [0,\infty)$, the \emph{probability density function}, with
+\[
+\mathbb{P}(X \in A) = \int_A f_X(x)\,dx \quad \text{for every Borel } A \subseteq \mathbb{R}.
+\]
+\end{definition}
+
+\begin{example}[Standard families]
+\begin{itemize}
+\item Bernoulli$(p)$: $p_X(1)=p,\ p_X(0)=1-p$.
+\item Binomial$(n,p)$: $p_X(k) = \binom{n}{k} p^k (1-p)^{n-k}$.
+\item Categorical$(\pi_1,\dots,\pi_K)$: $p_X(k)=\pi_k$, $\sum_k \pi_k = 1$.
+\item Geometric$(p)$: $p_X(k) = (1-p)^{k-1} p$, $k \geq 1$.
+\item Uniform$[a,b]$: $f_X(x) = \tfrac{1}{b-a}\mathbf{1}_{[a,b]}(x)$.
+\item Gaussian $\mathcal{N}(\mu,\sigma^2)$: $f_X(x) = \tfrac{1}{\sqrt{2\pi}\sigma} \exp\!\left(-\tfrac{(x-\mu)^2}{2\sigma^2}\right)$.
+\end{itemize}
+\end{example}
+
+\begin{definition}[Joint, marginal, conditional]
+For $(X,Y)$ on the same space the \emph{joint} distribution is on $\mathbb{R}^2$. \emph{Marginals} integrate/sum out: $f_X(x) = \int f_{X,Y}(x,y)\, dy$. The \emph{conditional} density is $f_{Y\mid X}(y\mid x) = f_{X,Y}(x,y)/f_X(x)$ when $f_X(x) > 0$.
+\end{definition}
+
+\subsection*{Theorems and Proofs}
+
+\begin{theorem}[Properties of CDF]
+$F_X$ is (i) non-decreasing, (ii) right-continuous, (iii) $\lim_{x\to -\infty} F_X(x) = 0$, (iv) $\lim_{x\to\infty} F_X(x) = 1$.
+\end{theorem}
+
+\begin{proof}
+(i) If $x \leq y$ then $\{X \leq x\} \subseteq \{X \leq y\}$, so $\mathbb{P}$-monotonicity gives $F_X(x) \leq F_X(y)$.
+
+(ii) Fix $x$ and let $x_n \downarrow x$. Then $\{X \leq x_n\} \downarrow \{X \leq x\}$ (countable intersection). By continuity of $\mathbb{P}$ from above (Chapter 8, since $\mathbb{P}(\{X\leq x_1\}) \leq 1 < \infty$),
+\[
+F_X(x_n) = \mathbb{P}(X \leq x_n) \to \mathbb{P}(X \leq x) = F_X(x).
+\]
+
+(iii) Take $x_n \downarrow -\infty$. Then $\{X \leq x_n\} \downarrow \emptyset$, hence $F_X(x_n) \to \mathbb{P}(\emptyset) = 0$.
+
+(iv) Take $x_n \uparrow \infty$. Then $\{X \leq x_n\} \uparrow \Omega$; continuity from below gives $F_X(x_n) \to \mathbb{P}(\Omega) = 1$.
+\end{proof}
+
+\begin{theorem}[Normalization]
+$\sum_{x \in S} p_X(x) = 1$ in the discrete case, and $\int_{\mathbb{R}} f_X(x)\,dx = 1$ in the continuous case.
+\end{theorem}
+
+\begin{proof}
+Discrete: $\{X = x\}$ for $x \in S$ are disjoint with union $\{X \in S\} = \Omega$. Countable additivity:
+\[
+1 = \mathbb{P}(\Omega) = \sum_{x \in S} \mathbb{P}(X = x) = \sum_x p_X(x).
+\]
+Continuous: take $A = \mathbb{R}$ in the defining property: $1 = \mathbb{P}(X \in \mathbb{R}) = \int_\mathbb{R} f_X$.
+\end{proof}
+
+\begin{theorem}[Change of variables, 1-D]
+Let $X$ have density $f_X$ and let $g$ be strictly monotone and $C^1$ on the support of $X$. Then $Y = g(X)$ has density
+\[
+f_Y(y) = f_X(g^{-1}(y))\,\bigl|(g^{-1})'(y)\bigr|.
+\]
+\end{theorem}
+
+\begin{proof}
+Suppose $g$ is strictly increasing. For $y \in g(\text{supp}\, X)$,
+\[
+F_Y(y) = \mathbb{P}(g(X) \leq y) = \mathbb{P}(X \leq g^{-1}(y)) = F_X(g^{-1}(y)).
+\]
+Differentiate using the chain rule (Chapter 3) and the fact that $F_X' = f_X$:
+\[
+f_Y(y) = f_X(g^{-1}(y))\,(g^{-1})'(y).
+\]
+Since $g^{-1}$ is increasing, $(g^{-1})'(y) > 0$, matching the absolute value. If $g$ is decreasing, $\{g(X) \leq y\} = \{X \geq g^{-1}(y)\}$, so $F_Y(y) = 1 - F_X(g^{-1}(y))$ and differentiation gives $-f_X(g^{-1}(y))(g^{-1})'(y)$ with $(g^{-1})'(y) < 0$, again the absolute value.
+\end{proof}
+
+\begin{theorem}[Inverse-CDF sampling]
+Let $F$ be a CDF on $\mathbb{R}$ and define the generalized inverse $F^{-1}(u) = \inf\{x : F(x) \geq u\}$. If $U \sim \mathrm{Uniform}[0,1]$, then $X := F^{-1}(U)$ has CDF $F$.
+\end{theorem}
+
+\begin{proof}
+We claim $\{F^{-1}(U) \leq x\} = \{U \leq F(x)\}$ up to a null set. If $F^{-1}(u) \leq x$, the infimum definition together with right-continuity of $F$ implies $F(x) \geq u$. Conversely, if $u \leq F(x)$ then $x \in \{x' : F(x') \geq u\}$, so $F^{-1}(u) \leq x$. Hence
+\[
+\mathbb{P}(X \leq x) = \mathbb{P}(U \leq F(x)) = F(x),
+\]
+using uniformity of $U$ on $[0,1]$.
+\end{proof}
+
+\subsection*{Code Sketch}
+
+The notebook (\texttt{cells.json}): (1) builds a 5-class categorical via softmax of fixed logits and verifies $\sum p_X = 1$; (2) computes its CDF and samples 10000 draws by inverse-CDF, comparing empirical to true; (3) implements $f(x) = \tfrac{1}{\sqrt{2\pi}} e^{-x^2/2}$, verifies $\int f \approx 1$ by Riemann sum, and computes $F(x)$ by cumulative sum; (4) verifies Theorem 9.3 on $Y = -\ln X$ with $X \sim U[0,1]$, yielding $Y \sim \mathrm{Exp}(1)$; (5) re-runs inverse-CDF sampling on the categorical with growing $n$ to demonstrate convergence.
+
+\subsection*{Connection to LLMs}
+
+A causal language model produces logits $z_t \in \mathbb{R}^V$, which softmax maps to a categorical distribution
+\[
+p_\theta(x_t \mid x_{<t}) = \mathrm{softmax}(z_t).
+\]
+Token sampling at temperature $\tau$ rescales logits to $z_t/\tau$ and draws from this categorical. The standard implementation is exactly inverse-CDF sampling (Theorem 9.4) on the cumulative softmax, or equivalently the \emph{Gumbel-max trick} $\arg\max_k(z_k + G_k)$ with $G_k \sim \mathrm{Gumbel}(0,1)$. Cross-entropy loss (Chapter 17) is $-\log p_\theta(x_t\mid x_{<t})$, an expectation under the data distribution; the causal LM training objective (Chapter 25) is the joint log-likelihood factored through the conditional distributions defined here.

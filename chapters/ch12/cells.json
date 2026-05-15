@@ -1,0 +1,171 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 12 — Statistical inference: likelihood, MLE, ERM, bias-variance\n",
+      "\n",
+      "We treat data as iid samples from a parametric family $\\{p_\\theta\\}$ and use the **likelihood** to pick the best $\\theta$. We then verify three claims numerically: (i) MLE for a Gaussian mean equals the sample mean; (ii) MLE for a categorical model equals the empirical distribution and minimizes cross-entropy; (iii) MSE = Bias$^2$ + Variance.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "# --- Gaussian MLE: simulate N(mu=2, sigma=1), compute log-likelihood on a mu-grid ---\n",
+      "np.random.seed(0)\n",
+      "mu_true, sigma = 2.0, 1.0\n",
+      "n = 1000\n",
+      "X = np.random.normal(mu_true, sigma, size=n)\n",
+      "\n",
+      "def log_lik_gauss(mu, X, sigma=1.0):\n",
+      "    return -0.5 * n * np.log(2*np.pi*sigma**2) - 0.5/sigma**2 * np.sum((X - mu)**2)\n",
+      "\n",
+      "grid = np.linspace(1.0, 3.0, 4001)\n",
+      "ll = np.array([log_lik_gauss(m, X, sigma) for m in grid])\n",
+      "mu_hat_grid = grid[int(np.argmax(ll))]\n",
+      "mu_hat_closed = X.mean()\n",
+      "\n",
+      "print(f'sample mean (closed form MLE): {mu_hat_closed:.6f}')\n",
+      "print(f'argmax over grid             : {mu_hat_grid:.6f}')\n",
+      "print(f'|difference|                 : {abs(mu_hat_grid - mu_hat_closed):.4e}')\n",
+      "assert abs(mu_hat_grid - mu_hat_closed) < 1e-3\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## MLE = minimum cross-entropy (categorical case)\n",
+      "\n",
+      "For a categorical model with classes $\\{1,\\dots,K\\}$, the log-likelihood divided by $n$ is $\\sum_k \\hat p_n(k)\\log p_\\theta(k) = -H(\\hat p_n, p_\\theta)$. Maximizing the likelihood is therefore identical to minimizing cross-entropy, and the unique minimizer (subject to $\\sum_k \\theta_k = 1$) is $\\theta = \\hat p_n$ — provable by Lagrange multipliers, verified here numerically.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "K = 4\n",
+      "p_true = np.array([0.1, 0.2, 0.3, 0.4])\n",
+      "n = 500\n",
+      "samples = np.random.choice(K, size=n, p=p_true)\n",
+      "p_hat = np.bincount(samples, minlength=K) / n\n",
+      "print(f'empirical distribution p_hat: {p_hat}')\n",
+      "\n",
+      "def cross_entropy(p, q, eps=1e-12):\n",
+      "    return -np.sum(p * np.log(q + eps))\n",
+      "\n",
+      "# Sweep theta on a small grid around p_hat (a tiny convex perturbation toward each vertex)\n",
+      "best_H, best_theta = np.inf, None\n",
+      "for alpha in np.linspace(0.0, 0.5, 11):\n",
+      "    for k in range(K):\n",
+      "        e_k = np.zeros(K); e_k[k] = 1.0\n",
+      "        theta = (1 - alpha) * p_hat + alpha * e_k\n",
+      "        H = cross_entropy(p_hat, theta)\n",
+      "        if H < best_H:\n",
+      "            best_H, best_theta = H, theta\n",
+      "\n",
+      "H_at_phat = cross_entropy(p_hat, p_hat)\n",
+      "print(f'H(p_hat, p_hat)         = {H_at_phat:.6f}')\n",
+      "print(f'min H over grid         = {best_H:.6f}')\n",
+      "print(f'argmin theta over grid  = {best_theta}')\n",
+      "assert np.allclose(best_theta, p_hat)\n",
+      "assert abs(best_H - H_at_phat) < 1e-9\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Bias-variance decomposition\n",
+      "\n",
+      "We estimate $\\mu = 0$ for $X_i \\sim \\mathcal{N}(0,1)$ with two estimators:\n",
+      "- $\\hat\\mu_1 = \\bar X_n$ (unbiased, variance $1/n$);\n",
+      "- $\\hat\\mu_2 = (\\bar X_n + 1)/2$ (biased toward $1/2$, variance $1/(4n)$).\n",
+      "\n",
+      "Run $T = 1000$ trials at $n = 10$, compute empirical $\\mathrm{Bias}^2$, $\\mathrm{Var}$, $\\mathrm{MSE}$, and verify $\\mathrm{MSE} = \\mathrm{Bias}^2 + \\mathrm{Var}$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "T, n, mu_true = 1000, 10, 0.0\n",
+      "samples = np.random.normal(mu_true, 1.0, size=(T, n))\n",
+      "xbar = samples.mean(axis=1)\n",
+      "mu1 = xbar\n",
+      "mu2 = (xbar + 1.0) / 2.0\n",
+      "\n",
+      "def report(name, est, mu_true):\n",
+      "    bias = est.mean() - mu_true\n",
+      "    var = est.var(ddof=0)\n",
+      "    mse = ((est - mu_true)**2).mean()\n",
+      "    print(f'{name:>10s}: bias^2={bias**2:.5f}  var={var:.5f}  '\n",
+      "          f'bias^2+var={bias**2+var:.5f}  MSE={mse:.5f}')\n",
+      "    assert abs((bias**2 + var) - mse) < 1e-12\n",
+      "    return bias**2, var, mse\n",
+      "\n",
+      "report('mu1 = Xbar', mu1, mu_true)\n",
+      "report('mu2 biased', mu2, mu_true)\n",
+      "print('Decomposition Bias^2 + Var = MSE verified for both estimators.')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## ERM as a generalization of MLE\n",
+      "\n",
+      "Replace $-\\log p_\\theta(x)$ by an arbitrary loss $\\ell(\\theta;x)$ and minimize the empirical mean. Linear regression with squared loss $\\ell(w; (x,y)) = (y - wx)^2$ is the canonical example; the ERM solution is the **normal equation** $\\hat w = (\\sum_i x_i y_i)/(\\sum_i x_i^2)$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "np.random.seed(0)\n",
+      "w_true, sigma_eps, n = 3.0, 0.5, 100\n",
+      "x = np.random.normal(0.0, 1.0, size=n)\n",
+      "eps = np.random.normal(0.0, sigma_eps, size=n)\n",
+      "y = w_true * x + eps\n",
+      "\n",
+      "# Normal equation in 1D: w_hat = (x . y) / (x . x)\n",
+      "w_hat = float(np.dot(x, y) / np.dot(x, x))\n",
+      "emp_risk = float(np.mean((y - w_hat * x)**2))\n",
+      "print(f'true w        : {w_true}')\n",
+      "print(f'ERM estimate  : {w_hat:.6f}')\n",
+      "print(f'|w_hat - w*|  : {abs(w_hat - w_true):.4e}')\n",
+      "print(f'empirical risk: {emp_risk:.6f}  (noise variance {sigma_eps**2:.4f})')\n",
+      "assert abs(w_hat - w_true) < 0.1\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Connection to LLMs\n",
+      "\n",
+      "An autoregressive language model factors $p_\\theta(x_{1:T}) = \\prod_t p_\\theta(x_t \\mid x_{<t})$. The pre-training loss is\n",
+      "$$-\\frac{1}{N}\\sum_{\\text{seq}}\\sum_t \\log p_\\theta(x_t \\mid x_{<t}) \\;=\\; H(\\hat p_n,\\,p_\\theta),$$\n",
+      "i.e. cross-entropy with the empirical token distribution. By Theorem 12.1 this is exactly MLE; by its corollary it is KL projection of the model onto the empirical corpus. Bias-variance (Theorem 12.3) then governs the under/overfitting trade-off explored in Chapter 27.\n"
+    ]
+  }
+]

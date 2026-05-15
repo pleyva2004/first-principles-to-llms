@@ -1,0 +1,128 @@
+\subsection*{Motivation}
+
+Chapter 7 proved that gradient descent on an $L$-smooth convex function reaches an $\epsilon$-stationary point in $O(1/\epsilon)$ iterations using the \emph{full} gradient $\nabla F(\theta)$. For a transformer pre-trained on $10^{13}$ tokens, a single full-gradient step would require a forward/backward pass over the entire corpus --- weeks of compute per update. The fix is to estimate $\nabla F$ from a random \emph{mini-batch} and accept a noisy step in exchange for a cheap one. This chapter justifies the trade. We define the stochastic objective, prove that mini-batching reduces variance as $1/B$, and combine the descent lemma of Chapter 7 with the linearity of expectation (Chapter 10) to derive the canonical $O(1/\sqrt{T})$ rate of stochastic gradient descent on smooth (possibly non-convex) losses.
+
+\subsection*{Definitions}
+
+\begin{definition}[Stochastic objective]
+Let $\xi \sim \mathcal{D}$ be a random data point and $f(\cdot; \xi) : \mathbb{R}^n \to \mathbb{R}$ a loss. The \emph{population risk} is
+\[
+F(\theta) := \mathbb{E}_{\xi \sim \mathcal{D}}[f(\theta; \xi)],
+\]
+in the sense of Chapter 10. Training data are i.i.d. draws $\xi_1, \xi_2, \dots$ from $\mathcal{D}$.
+\end{definition}
+
+\begin{definition}[Stochastic gradient]
+$\hat g(\theta; \xi) := \nabla_\theta f(\theta; \xi)$. Under mild regularity (interchange of $\nabla$ and $\mathbb{E}$),
+\[
+\mathbb{E}_{\xi}[\hat g(\theta; \xi)] = \nabla F(\theta) \qquad (\text{unbiasedness}).
+\]
+\end{definition}
+
+\begin{definition}[SGD update]
+Given step size $\eta_t > 0$ and an independent sample $\xi_t \sim \mathcal{D}$,
+\[
+\theta_{t+1} = \theta_t - \eta_t \hat g(\theta_t; \xi_t).
+\]
+\end{definition}
+
+\begin{definition}[Mini-batch SGD]
+Draw $B$ i.i.d. samples $\xi_1, \dots, \xi_B$ and average:
+\[
+\hat g_B(\theta) := \frac{1}{B} \sum_{j=1}^{B} \nabla_\theta f(\theta; \xi_j).
+\]
+\end{definition}
+
+\begin{definition}[Bounded variance]
+$\mathbb{E}_\xi \|\hat g(\theta; \xi) - \nabla F(\theta)\|^2 \leq \sigma^2$ uniformly in $\theta$.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Variance reduction by batching]
+Under bounded variance and i.i.d. sampling,
+\[
+\mathbb{E}\|\hat g_B(\theta) - \nabla F(\theta)\|^2 \leq \frac{\sigma^2}{B}.
+\]
+\end{theorem}
+
+\begin{proof}
+Let $Z_j := \hat g(\theta; \xi_j) - \nabla F(\theta)$. The $Z_j$ are i.i.d., zero-mean, with $\mathbb{E}\|Z_j\|^2 \leq \sigma^2$. Then $\hat g_B - \nabla F = \tfrac{1}{B}\sum_j Z_j$, and
+\[
+\mathbb{E}\Big\|\tfrac{1}{B}\sum_j Z_j\Big\|^2 = \tfrac{1}{B^2}\sum_{j,k} \mathbb{E}\langle Z_j, Z_k\rangle = \tfrac{1}{B^2}\sum_j \mathbb{E}\|Z_j\|^2 \leq \frac{\sigma^2}{B},
+\]
+where cross terms vanish by independence and zero mean (Theorem 10.6).
+\end{proof}
+
+\begin{remark}
+This is the law of large numbers (Chapter 10) applied to the gradient: doubling the batch halves the noise variance.
+\end{remark}
+
+\begin{theorem}[SGD on $L$-smooth, possibly non-convex $F$]
+Suppose $F$ is $L$-smooth, bounded below by $F^\star$, and run SGD with constant step $\eta = \min(1/L,\, c/\sqrt{T})$ for $T$ iterations, with stochastic gradients of variance at most $\sigma^2/B$. Then
+\[
+\frac{1}{T}\sum_{t=0}^{T-1} \mathbb{E}\|\nabla F(\theta_t)\|^2 \leq \frac{2\big(F(\theta_0) - F^\star\big)}{\eta T} + \frac{L \eta \sigma^2}{B} = O(1/\sqrt{T}).
+\]
+\end{theorem}
+
+\begin{proof}
+Let $g_t := \nabla F(\theta_t)$ and write $\hat g_t = g_t + \zeta_t$ with $\mathbb{E}[\zeta_t \mid \theta_t] = 0$ and $\mathbb{E}\|\zeta_t\|^2 \leq \sigma^2/B$. The descent lemma of Chapter 7, applied to the displacement $\theta_{t+1} - \theta_t = -\eta \hat g_t$, gives
+\[
+F(\theta_{t+1}) \leq F(\theta_t) - \eta \langle g_t, \hat g_t\rangle + \tfrac{L \eta^2}{2}\|\hat g_t\|^2.
+\]
+Take conditional expectation given $\theta_t$. Using $\mathbb{E}[\hat g_t \mid \theta_t] = g_t$ and $\mathbb{E}\|\hat g_t\|^2 = \|g_t\|^2 + \mathbb{E}\|\zeta_t\|^2$,
+\[
+\mathbb{E}[F(\theta_{t+1}) \mid \theta_t] \leq F(\theta_t) - \eta\|g_t\|^2 + \tfrac{L\eta^2}{2}\big(\|g_t\|^2 + \sigma^2/B\big).
+\]
+With $\eta \leq 1/L$ we have $\tfrac{L\eta^2}{2} \leq \eta/2$, so the coefficient of $\|g_t\|^2$ becomes $-\eta + \eta/2 = -\eta/2$:
+\[
+\mathbb{E}[F(\theta_{t+1}) \mid \theta_t] \leq F(\theta_t) - \tfrac{\eta}{2}\|g_t\|^2 + \tfrac{L \eta^2 \sigma^2}{2B}.
+\]
+Take the full expectation, sum $t = 0, \dots, T-1$, and telescope:
+\[
+\tfrac{\eta}{2} \sum_{t=0}^{T-1} \mathbb{E}\|g_t\|^2 \leq F(\theta_0) - \mathbb{E} F(\theta_T) + \tfrac{L \eta^2 \sigma^2 T}{2B} \leq F(\theta_0) - F^\star + \tfrac{L \eta^2 \sigma^2 T}{2B}.
+\]
+Divide by $\eta T / 2$:
+\[
+\frac{1}{T}\sum_{t=0}^{T-1}\mathbb{E}\|g_t\|^2 \leq \frac{2(F(\theta_0) - F^\star)}{\eta T} + \frac{L \eta \sigma^2}{B}.
+\]
+Choose $\eta = c/\sqrt{T}$ (subject to $\eta \leq 1/L$); both right-hand terms become $O(1/\sqrt{T})$, with $c = \sqrt{2(F(\theta_0) - F^\star) B / (L \sigma^2)}$ minimizing the bound.
+\end{proof}
+
+\begin{remark}
+The average squared gradient norm decays like $1/\sqrt{T}$ and the noise floor is proportional to $\eta \sigma^2 / B$. Larger batches permit a larger $\eta$ at the same noise level.
+\end{remark}
+
+\begin{theorem}[SGD on $L$-smooth, $\mu$-strongly convex $F$; sketch]
+With diminishing step $\eta_t = \tfrac{2}{\mu(t + t_0)}$ for $t_0$ large enough that $\eta_0 \leq 1/L$,
+\[
+\mathbb{E}\|\theta_T - \theta^\star\|^2 \leq \frac{C}{T}.
+\]
+\end{theorem}
+
+\begin{proof}[Sketch]
+Let $r_t^2 := \mathbb{E}\|\theta_t - \theta^\star\|^2$. Expand $\|\theta_{t+1} - \theta^\star\|^2 = \|\theta_t - \theta^\star - \eta_t \hat g_t\|^2$ and take expectation. Strong convexity gives $\langle g_t, \theta_t - \theta^\star\rangle \geq \mu \|\theta_t - \theta^\star\|^2$ (Chapter 7), and the noise contributes $\eta_t^2 \sigma^2/B$:
+\[
+r_{t+1}^2 \leq (1 - \eta_t \mu)\, r_t^2 + \eta_t^2 \sigma^2 / B.
+\]
+With $\eta_t \mu = 2/(t + t_0)$, induction $r_t^2 \leq C/(t + t_0)$ closes for $C \geq 4 \sigma^2/(\mu^2 B)$, giving $r_T^2 = O(1/T)$.
+\end{proof}
+
+\begin{proposition}[Robbins--Monro conditions, 1951]
+For $\theta_{t+1} = \theta_t - \eta_t \hat g_t$ to converge almost surely to a stationary point of $F$ under standard regularity, the step sizes must satisfy
+\[
+\sum_{t=0}^{\infty} \eta_t = \infty, \qquad \sum_{t=0}^{\infty} \eta_t^2 < \infty.
+\]
+\end{proposition}
+
+\begin{remark}
+$\sum \eta_t = \infty$ guarantees the iterates travel far enough to escape any bounded region; $\sum \eta_t^2 < \infty$ controls the cumulative noise $\sum \eta_t \zeta_t$ in second moment (martingale-convergence). The schedule $\eta_t = c/(t+1)$ satisfies both; $\eta_t = c/\sqrt{t+1}$ fails square-summability; a constant step satisfies neither.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The accompanying notebook compares full-batch GD against SGD on a 1-D least-squares loss; empirically verifies $\mathrm{Var}(\hat g_B) \propto 1/B$ for $B \in \{1, 8, 64, 256\}$; runs SGD on the smooth non-convex toy $F(\theta) = \theta^2/2 + 0.5\sin(5\theta)$ to display $T^{-1/2}$ decay of the running average of $\|\nabla F(\theta_t)\|^2$; and contrasts a constant step (which plateaus at a noise floor) with $\eta_t = c/(t+1)$ (which converges).
+
+\subsection*{Connection to LLMs}
+
+Pre-training a language model is mini-batch SGD on the cross-entropy loss (Chapter 11) of next-token prediction. The ``batch size'' of scaling-law papers is exactly the $B$ of Theorem 13.1; doubling it halves the per-step gradient variance but doubles the FLOPs per step. The $O(1/\sqrt{T})$ rate of Theorem 13.2 is why pre-training, even of huge models, must consume \emph{many} tokens --- there is no $1/T$ shortcut without strong convexity. In practice we use AdamW (Chapter 14), which adds momentum and per-coordinate adaptive scaling on top of the SGD skeleton derived here; the convergence intuition (variance reduction by batching, noise floor $\propto \eta \sigma^2/B$, $1/\sqrt{T}$ asymptotics) carries over essentially unchanged.

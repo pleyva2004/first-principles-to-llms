@@ -1,0 +1,167 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Chapter 11 — Information theory: entropy, cross-entropy, KL\n",
+      "\n",
+      "We use the natural log $\\ln$ throughout. Self-information is $I(x) = -\\ln p(x)$; entropy is $H(p) = \\mathbb{E}_{x\\sim p}[-\\ln p(x)]$; cross-entropy is $H(p, q) = \\mathbb{E}_{x \\sim p}[-\\ln q(x)]$; KL is $D_{\\mathrm{KL}}(p \\| q) = \\mathbb{E}_{x \\sim p}[\\ln p(x)/q(x)]$. The two non-trivial facts proved in the chapter are: (1) **Gibbs**, $D_{\\mathrm{KL}}(p \\| q) \\ge 0$; (2) the **decomposition** $H(p, q) = H(p) + D_{\\mathrm{KL}}(p \\| q)$. Everything else follows.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "\n",
+      "EPS = 1e-12\n",
+      "\n",
+      "def entropy(p):\n",
+      "    p = np.asarray(p, dtype=float)\n",
+      "    # convention 0 ln 0 = 0 via clipping; contributions of zeros are zero anyway\n",
+      "    return float(-np.sum(np.where(p > 0, p * np.log(np.clip(p, EPS, 1.0)), 0.0)))\n",
+      "\n",
+      "def cross_entropy(p, q):\n",
+      "    p = np.asarray(p, dtype=float); q = np.asarray(q, dtype=float)\n",
+      "    return float(-np.sum(np.where(p > 0, p * np.log(np.clip(q, EPS, 1.0)), 0.0)))\n",
+      "\n",
+      "def kl(p, q):\n",
+      "    p = np.asarray(p, dtype=float); q = np.asarray(q, dtype=float)\n",
+      "    ratio = np.log(np.clip(p, EPS, 1.0)) - np.log(np.clip(q, EPS, 1.0))\n",
+      "    return float(np.sum(np.where(p > 0, p * ratio, 0.0)))\n",
+      "\n",
+      "# Two categoricals over 5 tokens.\n",
+      "p = np.array([0.05, 0.10, 0.50, 0.20, 0.15])\n",
+      "q = np.array([0.20, 0.20, 0.20, 0.20, 0.20])\n",
+      "assert np.isclose(p.sum(), 1.0) and np.isclose(q.sum(), 1.0)\n",
+      "\n",
+      "Hp = entropy(p)\n",
+      "Hpq = cross_entropy(p, q)\n",
+      "Dpq = kl(p, q)\n",
+      "print(f'H(p)        = {Hp:.6f} nats')\n",
+      "print(f'H(p, q)     = {Hpq:.6f} nats')\n",
+      "print(f'D_KL(p||q)  = {Dpq:.6f} nats')\n",
+      "print(f'H(p) + D_KL = {Hp + Dpq:.6f} nats')\n",
+      "print(f'decomposition residual: {abs(Hpq - (Hp + Dpq)):.2e}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Gibbs' inequality\n",
+      "\n",
+      "$D_{\\mathrm{KL}}(p \\| q) \\ge 0$ for every pair of PMFs on the same support, with equality iff $p = q$. Proof by Jensen on the convex map $-\\ln$ (Chapter 10). We sample 50 random Dirichlet pairs and confirm.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "rng = np.random.default_rng(0)\n",
+      "K = 5\n",
+      "alpha = np.ones(K)\n",
+      "ps = rng.dirichlet(alpha, size=50)\n",
+      "qs = rng.dirichlet(alpha, size=50)\n",
+      "\n",
+      "kls = np.array([kl(p_i, q_i) for p_i, q_i in zip(ps, qs)])\n",
+      "self_kls = np.array([kl(p_i, p_i) for p_i in ps])\n",
+      "\n",
+      "print(f'min  D_KL(p_i || q_i) over 50 pairs: {kls.min():.6f}')\n",
+      "print(f'mean D_KL(p_i || q_i) over 50 pairs: {kls.mean():.6f}')\n",
+      "print(f'all D_KL >= 0?                       {bool(np.all(kls >= -1e-12))}')\n",
+      "print(f'max |D_KL(p_i || p_i)|:              {np.max(np.abs(self_kls)):.2e}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Maximum entropy\n",
+      "\n",
+      "On a finite support of size $K$, $H(p) \\le \\ln K$ with equality iff $p$ is uniform. Proof: $D_{\\mathrm{KL}}(p \\| u) = \\ln K - H(p) \\ge 0$ by Gibbs.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "K = 8\n",
+      "u = np.full(K, 1.0 / K)\n",
+      "Hu = entropy(u)\n",
+      "print(f'H(uniform on {K}) = {Hu:.6f} nats')\n",
+      "print(f'ln {K}            = {np.log(K):.6f} nats')\n",
+      "print(f'difference        = {abs(Hu - np.log(K)):.2e}')\n",
+      "\n",
+      "rng = np.random.default_rng(0)\n",
+      "ps = rng.dirichlet(np.ones(K), size=100)\n",
+      "Hs = np.array([entropy(p_i) for p_i in ps])\n",
+      "print(f'\\n100 random non-uniform p\\'s on K={K}:')\n",
+      "print(f'  max H(p) = {Hs.max():.6f}  (must be < ln K = {np.log(K):.6f})')\n",
+      "print(f'  all H(p) < ln K? {bool(np.all(Hs < np.log(K) - 1e-12))}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Mutual information\n",
+      "\n",
+      "$I(X; Y) = H(X) + H(Y) - H(X, Y) = D_{\\mathrm{KL}}(p_{X,Y} \\| p_X \\otimes p_Y)$. Both formulas must agree, and both must vanish when $X, Y$ are independent.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "# Correlated joint on {0,1}^2: P(X=Y) is large.\n",
+      "# Rows = X in {0,1}, cols = Y in {0,1}.\n",
+      "P = np.array([[0.40, 0.10],\n",
+      "              [0.10, 0.40]])\n",
+      "assert np.isclose(P.sum(), 1.0)\n",
+      "\n",
+      "pX = P.sum(axis=1)\n",
+      "pY = P.sum(axis=0)\n",
+      "P_indep = np.outer(pX, pY)\n",
+      "\n",
+      "H_X  = entropy(pX)\n",
+      "H_Y  = entropy(pY)\n",
+      "H_XY = entropy(P.flatten())\n",
+      "\n",
+      "I_via_entropies = H_X + H_Y - H_XY\n",
+      "I_via_kl        = kl(P.flatten(), P_indep.flatten())\n",
+      "\n",
+      "print('Correlated joint:')\n",
+      "print(f'  H(X)        = {H_X:.6f}')\n",
+      "print(f'  H(Y)        = {H_Y:.6f}')\n",
+      "print(f'  H(X, Y)     = {H_XY:.6f}')\n",
+      "print(f'  I via H     = {I_via_entropies:.6f}')\n",
+      "print(f'  I via KL    = {I_via_kl:.6f}')\n",
+      "print(f'  agreement   = {abs(I_via_entropies - I_via_kl):.2e}')\n",
+      "\n",
+      "# Independent joint: I should be 0.\n",
+      "P_prod = P_indep\n",
+      "I_prod = (entropy(P_prod.sum(axis=1)) + entropy(P_prod.sum(axis=0))\n",
+      "          - entropy(P_prod.flatten()))\n",
+      "I_prod_kl = kl(P_prod.flatten(), np.outer(P_prod.sum(axis=1), P_prod.sum(axis=0)).flatten())\n",
+      "print('\\nIndependent joint p_X \\u2297 p_Y:')\n",
+      "print(f'  I via H     = {I_prod:.2e}')\n",
+      "print(f'  I via KL    = {I_prod_kl:.2e}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "**Takeaway.** Cross-entropy $H(p_{\\mathrm{data}}, p_\\theta)$ is the next-token loss; minimizing it minimizes $D_{\\mathrm{KL}}(p_{\\mathrm{data}} \\| p_\\theta)$ since $H(p_{\\mathrm{data}})$ is $\\theta$-independent (Chapter 17, 25). KL appears again as the trust-region penalty in RLHF / DPO (Chapter 28). Entropy of the model's softmax controls sampling diversity at decoding time.\n"
+    ]
+  }
+]
