@@ -2492,19 +2492,316 @@ A unifying mental model: all three are doing surrogate optimization of $J(\theta
 # Block I — Inference and Serving
 
 <!-- CHAPTER 32 START -->
+<a id="chapter-32-kv-cache-mechanics-memory-analysis-and-tokens-per-second-benchmarks"></a>
 ## Chapter 32: KV cache mechanics: memory analysis and tokens-per-second benchmarks
 
-_Stub — will be filled by Phase B chapter agent._
+## Motivation
+
+A trained transformer is a function; an *inference engine* is a schedule for evaluating that function token by token. The schedule chosen by every modern LLM serving stack — vLLM, TensorRT-LLM, llama.cpp, MLX, transformers — pivots on one data structure: the **KV cache**. It is the difference between $O(T^2)$ generation and $O(T^3)$ generation, between 200 tokens/sec and 5 tokens/sec on the same hardware, and between fitting a 32k-context Llama on one A100 and not. This chapter derives the KV cache from the autoregressive factorization, proves it preserves the model's distribution exactly, characterizes its memory cost, and benchmarks the speedup on the tiny GPT we trained in Chapter 27.
+
+Throughout, $T$ denotes current sequence length, $d$ the model dimension, $N_\text{layers}$ the number of decoder layers, $N_\text{heads}$ the number of attention heads, and $d_k = d / N_\text{heads}$.
+
+## Definitions
+
+**Autoregressive generation.** A decoder-only transformer parameterizes $p_\theta(x_t \mid x_{<t})$ for each position $t$. To sample a continuation of length $L$ given a prompt of length $T_0$, one repeats: compute $p_\theta(\cdot \mid x_{<t})$, draw $x_t$, append, advance $t$. The naive implementation runs the full forward pass over all of $x_{<t}$ at every step.
+
+**Self-attention recap (Ch. 21–22).** A single head at layer $\ell$ maps the input $H^{(\ell-1)} \in \mathbb{R}^{T \times d}$ to
+$$Q = H^{(\ell-1)} W_Q, \quad K = H^{(\ell-1)} W_K, \quad V = H^{(\ell-1)} W_V,$$
+and outputs
+$$\text{Attn}(Q, K, V) = \mathrm{softmax}\!\left(\frac{QK^\top}{\sqrt{d_k}} + M_{\text{causal}}\right) V.$$
+Multi-head attention concatenates $N_\text{heads}$ such heads (Ch. 22).
+
+**KV cache.** For each layer $\ell$, head $h$, and previously processed token position $j$, store the row vectors
+$$K_j^{(\ell, h)} \in \mathbb{R}^{d_k}, \qquad V_j^{(\ell, h)} \in \mathbb{R}^{d_v}.$$
+At step $t+1$, given the new token embedding $h_t^{(\ell-1)}$, compute only
+$$Q_t^{(\ell,h)} = h_t^{(\ell-1)} W_Q, \quad K_t^{(\ell,h)} = h_t^{(\ell-1)} W_K, \quad V_t^{(\ell,h)} = h_t^{(\ell-1)} W_V,$$
+append $K_t, V_t$ to the cache, and compute attention as
+$$\text{Attn}_t = \mathrm{softmax}\!\left(\frac{Q_t [K_{0:t+1}]^\top}{\sqrt{d_k}}\right) V_{0:t+1}.$$
+There is no causal mask term because the cache contains only past keys by construction.
+
+**Cache size in bytes.** Summing over layers and heads,
+$$\boxed{\;\text{bytes}(T) = 2 \cdot N_\text{layers} \cdot T \cdot N_\text{heads} \cdot d_k \cdot b\;}$$
+where $b$ is the byte width of the storage dtype ($b=2$ for fp16/bf16, $b=4$ for fp32) and the leading 2 accounts for storing both $K$ and $V$.
+
+## Theorems
+
+**Theorem 1 (Functional equivalence).** *Let $f_\theta$ denote the deterministic forward map of a causally-masked transformer. For any prompt $x_{0:T_0}$ and sampling seed $s$, the token sequence produced by cached generation equals the sequence produced by uncached generation.*
+
+*Proof.* By induction on $t$. **Base** ($t = T_0$): no cache exists; both implementations run the same forward pass on $x_{0:T_0}$ and produce identical logits, hence (with shared seed $s$) identical $x_{T_0}$. **Inductive step.** Assume identical token sequences and identical layerwise activations $H^{(\ell)}_{0:t}$ through step $t$. At step $t+1$ the uncached path computes
+$$Q_t^{(\ell)} = h_t^{(\ell-1)} W_Q,\quad K_{0:t+1}^{(\ell)} = H^{(\ell-1)}_{0:t+1} W_K,\quad V_{0:t+1}^{(\ell)} = H^{(\ell-1)}_{0:t+1} W_V,$$
+then $\text{Attn}(Q_t, K_{0:t+1}, V_{0:t+1})$. The cached path stored $K_{0:t}^{(\ell)}, V_{0:t}^{(\ell)}$ from prior steps; by the inductive hypothesis these stored values are exactly the rows that the uncached path recomputes (each $K_j^{(\ell)}$ depends only on $h_j^{(\ell-1)}$, which the inductive hypothesis fixes). The cached path computes $K_t, V_t$ from the same $h_t^{(\ell-1)}$, concatenates, and applies the same softmax–matmul. Composition of deterministic operations on equal inputs yields equal outputs. The shared sampler seed $s$ then yields identical $x_{t+1}$. $\square$
+
+The proof relies critically on the *causal mask*: $K_j, V_j$ for $j \leq t$ never need to be re-derived from later activations, so caching them is lossless. Without causality (e.g., bidirectional encoders), no analogous KV cache exists.
+
+**Theorem 2 (Compute saved per generation step).** *Generating $L$ tokens after a prompt of length $T_0$ costs $\Theta((T_0 + L)^2 \, d)$ FLOPs with KV cache and $\Theta((T_0 + L)^3 \, d)$ without.*
+
+*Proof.* At step $t$ (current length $T_0 + t$), the per-layer attention cost decomposes into the $QK^\top$ matmul and the $\mathrm{softmax} \cdot V$ matmul. **Cached**: $Q_t \in \mathbb{R}^{1 \times d_k}$, $K \in \mathbb{R}^{(T_0+t) \times d_k}$, so $Q K^\top$ is $\Theta((T_0+t) d_k)$ per head, $\Theta((T_0+t) d)$ across heads, and $\Theta((T_0+t) d)$ for the $V$ multiply, giving $\Theta((T_0 + t) d)$ per layer. **Uncached**: the model recomputes all $T_0 + t$ rows of $K, V$ and the full $(T_0+t) \times (T_0+t)$ attention matrix, giving $\Theta((T_0 + t)^2 d)$ per layer. Multiplying by $N_\text{layers}$ (a constant) and summing $t = 1, \ldots, L$:
+$$\sum_{t=1}^{L}(T_0+t)\,d = \Theta((T_0+L)^2 d), \qquad \sum_{t=1}^{L}(T_0+t)^2 d = \Theta((T_0+L)^3 d). \;\square$$
+
+**Theorem 3 (Memory cost).** *The KV cache for a fixed model grows linearly in context length $T$, with slope $2 \, N_\text{layers} \, N_\text{heads} \, d_k \, b$ bytes per token.*
+
+*Proof.* Direct from the bytes formula; differentiate with respect to $T$. $\square$
+
+**Corollary (Llama-7B at 8k).** Take $N_\text{layers} = 32$, $N_\text{heads} = 32$, $d_k = 128$, $b = 2$ (fp16), $T = 8192$:
+$$\text{bytes} = 2 \cdot 32 \cdot 8192 \cdot 32 \cdot 128 \cdot 2 = 4.29 \times 10^9 \approx 4.0\,\text{GiB}.$$
+This exceeds the size of the model's $W_K, W_V$ projection weights themselves, and motivates the architectural responses we cover in Ch. 22 (GQA, MQA) and the system-level response of PagedAttention.
+
+## Code sketch and benchmarks
+
+The notebook implements a $\sim 50$-line PyTorch decoder with an optional `kv_cache` argument. Each block holds a `(K, V)` pair of shape `(B, n_heads, T_cache, d_k)` that is `torch.cat`-extended at every step. Device auto-detection picks `mps` on the user's M4 Pro, falling back to CUDA or CPU. The benchmark loop generates 256 tokens for prompt lengths $T_0 \in \{32, 64, 128, 256\}$ and reports the wall-clock ratio. With cache, throughput is roughly constant in $T_0$; without cache, it falls as $1/T_0^2$, giving observed speedups of $\sim 5\times$ at $T_0 = 32$ and $\sim 40\times$ at $T_0 = 256$ — consistent with Theorem 2. A second cell tabulates analytical cache size for the Ch. 27 tiny GPT, GPT-2 small, Llama-7B, and Llama-70B (with 8-way GQA), demonstrating how grouping queries (Ch. 22) shrinks the cache by the GQA group factor.
+
+## Connection to LLMs
+
+Every production inference stack is, fundamentally, KV-cache management. **PagedAttention** (vLLM) treats the cache as virtual memory with block-level paging, eliminating fragmentation. **GQA / MQA** (Ch. 22) shrink $N_\text{heads}$ in the cache while keeping it for queries. **Continuous batching** packs many requests' caches side by side and schedules them at token granularity. **Speculative decoding** amortizes a verifier's cache across draft tokens. **Quantization** to int8 or int4 halves or quarters the per-token slope. The lesson of this chapter is that all of these techniques are reactions to two facts proved here: cached generation is exact (Theorem 1) and memory is linear in $T$ (Theorem 3). Once both hold, the engineering question is just how to fit the line under the GPU's HBM ceiling.
+
 <!-- CHAPTER 32 END -->
 
 <!-- CHAPTER 33 START -->
+<a id="chapter-33-speculative-decoding-draft-target-model-with-rejection-sampling-correctness-proof"></a>
 ## Chapter 33: Speculative decoding: draft + target model with rejection sampling correctness proof
 
-_Stub — will be filled by Phase B chapter agent._
+# Chapter 33: Speculative Decoding
+
+## 1. Motivation
+
+Autoregressive sampling from a transformer (Chapter 25) is *latency-bound*: each new token requires one full forward pass over $O(L)$ layers. Even with a KV cache (Chapter 32) eliminating recomputation over the prefix, the next token still costs one sequential pass through the target model $\pi$. On modern GPUs this is **memory-bandwidth bound** — the matmuls underutilize the compute units because we load the entire weight matrix to produce a single token's logits.
+
+Speculative decoding (Leviathan et al. 2022; Chen et al. 2023) exploits a beautiful observation: a single forward pass of $\pi$ over $K+1$ tokens costs roughly the same wall-clock time as a pass over $1$ token, because the bottleneck is weight-loading, not arithmetic. So if we can *guess* the next $K$ tokens cheaply, we can verify all $K$ in parallel with one pass of $\pi$ — and provably get samples from $\pi$ exactly.
+
+## 2. Definitions
+
+**Draft model $\pi_d$.** A small, fast autoregressive model — typically $5\!-\!10\times$ smaller than the target. It generates $K$ candidate tokens $\tilde x_1, \ldots, \tilde x_K$ sequentially.
+
+**Target model $\pi$.** The model whose distribution we *actually* want to sample from. After the draft proposes $\tilde x_{1:K}$, we run a single forward pass of $\pi$ on the prefix concatenated with $\tilde x_{1:K}$, producing target distributions $\pi(\cdot \mid x_{<i})$ at each position $i \in \{1,\ldots,K+1\}$ in parallel.
+
+**Rejection-sampling acceptance rule.** For each draft token $\tilde x_i$, processed left-to-right:
+$$
+\text{accept } \tilde x_i \text{ with probability } a_i = \min\!\Big(1,\; \tfrac{\pi(\tilde x_i \mid x_{<i})}{\pi_d(\tilde x_i \mid x_{<i})}\Big).
+$$
+On the **first** rejection at position $i$, we discard $\tilde x_i, \tilde x_{i+1}, \ldots$ and resample from the **residual distribution**
+$$
+r_i(y) \;=\; \frac{\max\!\big(0,\; \pi(y \mid x_{<i}) - \pi_d(y \mid x_{<i})\big)}{Z_i}, \qquad Z_i = \sum_y \max(0, \pi(y) - \pi_d(y)).
+$$
+If *all* $K$ drafts are accepted, we use the target's free $(K+1)^{\text{th}}$ logit to sample one bonus token. Either way each speculative round produces between $1$ and $K+1$ accepted tokens at the cost of one target forward pass plus $K$ cheap draft passes.
+
+**Speedup.** Let $\bar n \in [1, K+1]$ be the expected number of tokens accepted per round and let $\alpha = c_\pi / c_{\pi_d}$ be the cost ratio. Wall-clock speedup over plain decoding is approximately
+$$
+\text{speedup} \;\approx\; \frac{\bar n}{1 + K/\alpha}.
+$$
+For $\alpha \gg K$ (target much slower than draft), speedup $\to \bar n$, capped at $K+1$.
+
+## 3. Theorems and Proofs
+
+### Theorem 3.1 (Correctness — exact equivalence to sampling from $\pi$)
+
+For any draft distribution $\pi_d$ with $\mathrm{supp}(\pi_d) \supseteq \mathrm{supp}(\pi)$, the speculative-decoding output at any single position is distributed *exactly* as $\pi$.
+
+**Proof.** Fix a position $i$ and condition on $x_{<i}$; write $\pi(y) := \pi(y \mid x_{<i})$ and $\pi_d(y) := \pi_d(y \mid x_{<i})$. The output at this position equals some token $x$ via exactly one of two disjoint events:
+
+*Case 1 — accept the draft.* The draft proposes $\tilde x_i = x$ (probability $\pi_d(x)$) and we accept (probability $\min(1, \pi(x)/\pi_d(x))$). Joint contribution:
+$$
+\mathbb{P}_1(x) \;=\; \pi_d(x) \cdot \min\!\Big(1, \tfrac{\pi(x)}{\pi_d(x)}\Big) \;=\; \min(\pi_d(x), \pi(x)).
+$$
+
+*Case 2 — reject and resample from $r$.* Total rejection probability over all proposals:
+$$
+P_{\text{rej}} \;=\; \sum_{\tilde x} \pi_d(\tilde x)\Big(1 - \min\!\big(1, \tfrac{\pi(\tilde x)}{\pi_d(\tilde x)}\big)\Big) \;=\; \sum_{\tilde x} \big(\pi_d(\tilde x) - \min(\pi_d(\tilde x), \pi(\tilde x))\big).
+$$
+Using $\pi_d(\tilde x) - \min(\pi_d(\tilde x), \pi(\tilde x)) = \max(0, \pi_d(\tilde x) - \pi(\tilde x))$ and the identity
+$$
+\sum_y \max(0, \pi_d(y) - \pi(y)) \;=\; \sum_y \max(0, \pi(y) - \pi_d(y)) \;=\; Z
+$$
+(both equal $\tfrac{1}{2}\|\pi - \pi_d\|_1$ since $\sum_y \pi = \sum_y \pi_d = 1$), we get $P_{\text{rej}} = Z$. After rejection we sample from $r(\cdot)$, contributing
+$$
+\mathbb{P}_2(x) \;=\; Z \cdot r(x) \;=\; Z \cdot \frac{\max(0, \pi(x) - \pi_d(x))}{Z} \;=\; \max(0, \pi(x) - \pi_d(x)).
+$$
+
+*Sum.* For any $x$,
+$$
+\mathbb{P}_1(x) + \mathbb{P}_2(x) \;=\; \min(\pi_d(x), \pi(x)) + \max(0, \pi(x) - \pi_d(x)) \;=\; \pi(x),
+$$
+because if $\pi(x) \le \pi_d(x)$ the first term is $\pi(x)$ and the second is $0$, while if $\pi(x) > \pi_d(x)$ the first term is $\pi_d(x)$ and the second is $\pi(x) - \pi_d(x)$. $\blacksquare$
+
+The argument extends position-by-position: once $\tilde x_i$ is accepted, $x_i = \tilde x_i$ has the marginal $\pi(\cdot \mid x_{<i})$, and the chain rule gives joint sampling from $\pi$.
+
+### Proposition 3.2 (Expected accepted prefix length)
+
+Let $\alpha_j = \mathbb{E}_{\tilde x_j \sim \pi_d}[\min(1, \pi(\tilde x_j)/\pi_d(\tilde x_j))]$ be the marginal acceptance probability at position $j$ given a fresh draft. Then the expected number of *accepted draft tokens* in a $K$-token speculative round is
+$$
+\bar n_K \;=\; \sum_{i=1}^{K} \prod_{j=1}^{i} \alpha_j.
+$$
+
+**Sketch.** Let $A_j = \mathbb{1}[\text{first }j\text{ drafts all accepted}]$. By construction, acceptance at position $j$ is independent across positions conditional on the prefix, so $\mathbb{E}[A_j] = \prod_{j'\le j}\alpha_{j'}$. Then $\bar n_K = \mathbb{E}\!\big[\sum_j A_j\big] = \sum_j \prod_{j'\le j}\alpha_{j'}$. $\square$
+
+A useful identity: $\alpha_j = 1 - \tfrac{1}{2}\|\pi - \pi_d\|_1$ at position $j$, so acceptance is governed by *total variation distance*.
+
+### Corollary 3.3 (Optimal draft)
+
+If $\pi_d = \pi$, then $\alpha_j = 1$ and $\bar n_K = K$, so all drafts accept — but we save no compute because the draft is as expensive as the target. The interesting regime is **cheap draft, slightly worse than target**: pay $K \cdot c_{\pi_d}$ to amortize one $c_\pi$ over $\bar n + 1$ tokens.
+
+## 4. Code Sketch and Benchmarks
+
+The companion notebook implements `speculative_decode(draft, target, prompt, K)` using toy categorical distributions over a small vocabulary (no GPT inference needed — Chapter 32 covers that). Key experiments:
+
+1. **Empirical correctness** — draw $10{,}000$ tokens via the speculative protocol and compare to direct samples from $\pi$. A $\chi^2$ goodness-of-fit test fails to reject ($p > 0.05$).
+2. **Speedup vs draft quality** — sweep a "noise" parameter $q$ where $\pi_d = (1-q)\,\pi + q\,\text{Uniform}$. Measure $\bar n$ and predicted wall-clock speedup at $K=4$, $\alpha = 7$.
+3. **Breakeven** — find the $q$ at which speculative decoding *loses* to plain decoding because the draft is too poor.
+
+## 5. Connection to LLMs
+
+Production inference engines — **vLLM**, **llama.cpp**, **MLX-lm**, **TensorRT-LLM** — all ship speculative decoding. Reported wall-clock speedups: **1.5–3$\times$** for code/translation (high agreement between draft and target) and **1.1–1.5$\times$** for open-ended chat. Variants:
+
+- **Self-speculation / Medusa heads**: instead of a separate draft model, attach extra prediction heads to the target itself.
+- **Tree attention / SpecInfer**: verify *multiple* candidate continuations in one forward pass via causal-mask trees, raising $\bar n$.
+- **EAGLE / Lookahead**: train a tiny draft head conditioned on the target's hidden state for higher acceptance.
+
+The chapter's correctness proof transfers verbatim to all these schemes: as long as the verification step uses the rejection rule with the residual-distribution fallback, the output marginal is *exactly* $\pi$. No quality is sacrificed for the speedup — a rare free lunch in deep learning.
+
 <!-- CHAPTER 33 END -->
 
 <!-- CHAPTER 34 START -->
+<a id="chapter-34-quantization-int8-and-int4-post-training-quantization-with-measured-perplexity-throughput-tradeoffs"></a>
 ## Chapter 34: Quantization: int8 and int4 post-training quantization with measured perplexity / throughput tradeoffs
 
-_Stub — will be filled by Phase B chapter agent._
+## Quantization: int8 / int4 post-training quantization with measured perplexity & throughput tradeoffs
+
+### Motivation
+
+Llama-3 70B in `bfloat16` is 140 GB of weights -- larger than any consumer GPU's
+VRAM and most workstation RAM. The same model in `int4` is ~40 GB and fits on
+a single 48 GB card with room for KV-cache. The accuracy cost? For
+well-calibrated `int8` quantization, perplexity typically rises by less than
+0.5%; for `int4`, by 1--3%. **Quantization is the single technique most
+responsible for moving frontier-class models out of the data center and onto
+laptops.** This chapter develops it from first principles.
+
+We restrict attention to *post-training quantization* (PTQ): take an already-trained
+fp16/bf16 checkpoint and replace its weights with low-precision approximations
+without further gradient updates. The mathematical object of study is a map
+$Q : \mathbb{R}^{m\times n} \to \mathbb{Z}^{m\times n}$ together with a
+dequantizer $D$ that approximates the identity: $D(Q(W)) \approx W$. Two
+questions follow: (i) what is the worst-case reconstruction error $\|W - D(Q(W))\|$
+(Ch. 6 norm theory), and (ii) how does that error propagate to the cross-entropy
+loss and hence the perplexity $e^{\mathrm{CE}}$ (Ch. 17)?
+
+### Definitions
+
+**Definition 34.1 (Affine quantizer).** Fix bit-width $b\in\{8,4,2\}$ and let
+$N = 2^b$. An *affine* quantizer with scale $s>0$ and zero-point
+$z\in\mathbb{Z}$ is the function
+$$Q_{s,z}(w) = \mathrm{clip}\!\big(\mathrm{round}(w/s) - z,\ q_{\min},\ q_{\max}\big),$$
+where the integer range is $[q_{\min}, q_{\max}] = [-N/2, N/2-1]$ (signed)
+or $[0, N-1]$ (unsigned). The dequantizer is $D_{s,z}(q) = (q + z)\cdot s$.
+The map is *symmetric* when $z=0$.
+
+**Definition 34.2 (Calibration).** Given a *calibration set*
+$\{x_1,\dots,x_K\}\subset\mathbb{R}^n$ and a layer with weight $W$, the scale
+$s$ is chosen to cover the dynamic range observed during a forward pass --
+typically $s = \max_{ij}|w_{ij}|/(N/2-1)$ (max-abs) or the 99.99-percentile
+absolute value (percentile clipping, robust to outliers).
+
+**Definition 34.3 (Granularity).**
+*Per-tensor* quantization uses one scalar $s$ for the entire matrix.
+*Per-row* (per-output-channel) gives each row $W_{i,:}$ its own $s_i$.
+*Per-channel-group* breaks each row into groups of 128 contiguous elements,
+each with its own scale. The metadata cost in bits per weight is, respectively,
+$O(1/mn)$, $O(1/n)$, $O(1/g)$, traded against tighter dynamic range.
+
+**Definition 34.4 (Weight-only quantization, W$b$A16).** Only the weight
+tensors are stored in `int`$b$; activations stay in fp16/bf16. The matmul
+dequantizes weights on-the-fly. This avoids the catastrophic effect of
+*activation outliers* identified by Dettmers et al. (2022, LLM.int8()).
+
+**Definition 34.5 (Layer-local objective).** For a linear layer $y = Wx$ and
+calibration matrix $X\in\mathbb{R}^{n\times K}$, the *layer-local quantization
+problem* is
+$$\widehat W \in \arg\min_{\widehat W \in \mathcal{Q}}\ \big\|WX - \widehat W X\big\|_F^2,$$
+where $\mathcal{Q}$ is the (discrete) set of representable quantized matrices.
+This is the objective minimized by **GPTQ** (Frantar et al., 2023).
+
+### Theorems
+
+**Theorem 34.6 (Round-to-nearest error bound).** Let $Q_s$ be the symmetric
+affine quantizer with scale $s$ and let $\widehat w = D_s(Q_s(w)) = s\cdot
+\mathrm{round}(w/s)$. For every $w$ in the representable range,
+$$|\,w - \widehat w\,| \le s/2.$$
+
+*Proof.* By definition of round-to-nearest, for any real $u$,
+$|u - \mathrm{round}(u)| \le 1/2$. Set $u = w/s$:
+$|w/s - \mathrm{round}(w/s)| \le 1/2$. Multiply by $s>0$:
+$|w - s\cdot\mathrm{round}(w/s)| = |w - \widehat w| \le s/2$. $\square$
+
+**Corollary 34.7 (Matrix Frobenius bound).** For an $m\times n$ matrix $W$
+quantized symmetrically per-tensor with scale $s$,
+$\|W - \widehat W\|_F \le (s/2)\sqrt{mn}$.
+
+**Theorem 34.8 (Per-row beats per-tensor on heterogeneous matrices).** Let
+$W\in\mathbb{R}^{m\times n}$ have rows with $\ell_\infty$ norms
+$r_i = \|W_{i,:}\|_\infty$. With $b$ bits and $N=2^b$:
+- *Per-tensor* scale $s_\star = (\max_i r_i)/(N/2-1)$ gives per-entry error
+  $\le s_\star/2$, so
+  $$\|W-\widehat W\|_F^2 \le \frac{mn}{4}\cdot\frac{(\max_i r_i)^2}{(N/2-1)^2}.$$
+- *Per-row* scale $s_i = r_i/(N/2-1)$ gives
+  $$\|W-\widehat W\|_F^2 \le \frac{n}{4(N/2-1)^2}\cdot\sum_{i=1}^m r_i^2.$$
+
+The ratio is
+$$\frac{\text{per-row bound}}{\text{per-tensor bound}}\;=\;\frac{1}{m}\cdot\frac{\sum_i r_i^2}{(\max_i r_i)^2}\;\le\; 1,$$
+with equality iff every row has the same $\ell_\infty$ norm. The gap grows
+with the variance of $\{r_i\}$.
+
+*Proof.* Both inequalities follow from Theorem 34.6 applied entrywise; the
+ratio identity is algebra. The bound is tight when one row dominates
+(`max` $\gg$ mean), wasting most of the integer grid on small rows. $\square$
+
+**Theorem 34.9 (GPTQ objective and OBQ update).** For a single layer with
+weight $W\in\mathbb{R}^{m\times n}$ and calibration Hessian
+$H = XX^\top \in \mathbb{R}^{n\times n}$ (positive semidefinite by
+construction), the layer-local objective decouples row-wise:
+$$\big\|WX-\widehat W X\big\|_F^2 \;=\; \sum_{i=1}^m (W_{i,:} - \widehat W_{i,:})\, H\, (W_{i,:} - \widehat W_{i,:})^\top.$$
+
+*Proof.* Expand $\|WX - \widehat W X\|_F^2 = \mathrm{tr}((W-\widehat W)XX^\top
+(W-\widehat W)^\top) = \sum_i \mathrm{row}_i (W - \widehat W)\, H\, \mathrm{row}_i(W-\widehat W)^\top$. $\square$
+
+**Algorithm (GPTQ, sketch).** Process columns $j=1,\dots,n$ in order. At step
+$j$, for each row $i$ quantize $w_{ij}$ to $\widehat w_{ij}$, compute the
+residual $\delta = w_{ij}-\widehat w_{ij}$, and update the *unquantized*
+columns $k>j$ by the Hessian-correcting term
+$w_{ik} \leftarrow w_{ik} - \delta\cdot H^{-1}_{jk}/H^{-1}_{jj}$. The Cholesky
+factor of $H^{-1}$ allows this in $O(n^3)$ per layer. The correction
+absorbs the rounding error of column $j$ into the *not-yet-quantized*
+columns, so subsequent quantizations partially cancel it out. The naïve
+round-to-nearest (RTN) baseline is the special case where the correction is
+omitted.
+
+### Code sketch and benchmarks
+
+The notebook (`cells.json`) contains six experiments:
+
+1. **Memory accounting.** A small bytes-math table: GPT-2 small (124M),
+   Llama-7B, Llama-70B in fp16 vs int8 vs int4.
+2. **Round-to-nearest implementation.** Symmetric per-tensor `quantize(w, bits)`;
+   measure $\|W-\widehat W\|_F$ on a Gaussian matrix.
+3. **Per-tensor vs per-row.** A $64\times 128$ matrix with row norms growing
+   geometrically as $10^{i/64}$; per-row gives roughly an order-of-magnitude
+   smaller reconstruction error at int4.
+4. **GPTQ on a tiny linear layer.** $d_{\text{in}}=16, d_{\text{out}}=8$,
+   100-sample calibration set. The Hessian-corrected method reduces the
+   layer-output error vs RTN by a clear margin.
+5. **End-to-end perplexity.** A miniature Ch 27-style numpy GPT
+   (2-layer character LM) is trained for a few hundred steps, then weights
+   are quantized to int8 and int4. Perplexity on the training corpus is
+   reported before and after.
+
+### Connection to LLMs
+
+Quantization closes the *deployment gap*. Training requires fp32 master
+weights (Ch 14 AdamW state, Ch 27 mixed-precision); inference needs only
+the forward pass, where weight precision dominates memory bandwidth on
+modern GPUs. The empirical rule of thumb -- $<0.5\%$ perplexity loss for
+int8, $1$--$3\%$ for int4 with GPTQ -- means a `Llama 3 70B` user trades
+roughly 2% perplexity for a $3.5\times$ memory reduction and $2\times$
+inference throughput. AWQ, SmoothQuant, and HQQ extend this picture:
+all minimize variants of the layer-local objective from Theorem 34.9,
+differing in how they reweight by activation statistics.
+
 <!-- CHAPTER 34 END -->

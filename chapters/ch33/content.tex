@@ -1,0 +1,108 @@
+\section*{Chapter 33: Speculative Decoding}
+
+\subsection*{1. Motivation}
+
+Autoregressive sampling from a transformer (Chapter~25) is latency-bound: each new token requires one full forward pass over $O(L)$ layers. Even with a KV cache (Chapter~32) eliminating recomputation over the prefix, the next token still costs one sequential pass through the target $\pi$. On modern GPUs this is \emph{memory-bandwidth bound} -- the matmuls underutilize the compute units because we load the entire weight matrix to produce a single token's logits.
+
+Speculative decoding (Leviathan et al.\ 2022; Chen et al.\ 2023) exploits a beautiful observation: a single forward pass of $\pi$ over $K+1$ tokens costs roughly the same wall-clock time as a pass over $1$ token, because the bottleneck is weight-loading, not arithmetic. So if we can \emph{guess} the next $K$ tokens cheaply, we can verify all $K$ in parallel with one pass of $\pi$ -- and provably get samples from $\pi$ exactly.
+
+\subsection*{2. Definitions}
+
+\begin{definition}[Draft model]
+A small, fast autoregressive model $\pi_d$ (typically $5$--$10\times$ smaller than the target) generating $K$ candidate tokens $\tilde x_1, \ldots, \tilde x_K$ sequentially.
+\end{definition}
+
+\begin{definition}[Target model]
+The model $\pi$ whose distribution we actually want to sample from. After the draft proposes $\tilde x_{1:K}$, we run one forward pass of $\pi$ on the prefix concatenated with $\tilde x_{1:K}$, producing $\pi(\cdot \mid x_{<i})$ at every position $i \in \{1,\ldots,K+1\}$ in parallel.
+\end{definition}
+
+\begin{definition}[Rejection-sampling acceptance rule]
+Process draft tokens left-to-right. Accept $\tilde x_i$ with probability
+\[
+a_i \;=\; \min\!\Big(1,\; \tfrac{\pi(\tilde x_i \mid x_{<i})}{\pi_d(\tilde x_i \mid x_{<i})}\Big).
+\]
+On the \emph{first} rejection at position $i$, discard $\tilde x_i, \tilde x_{i+1}, \ldots$ and resample from the residual distribution
+\[
+r_i(y) \;=\; \frac{\max\!\big(0,\; \pi(y \mid x_{<i}) - \pi_d(y \mid x_{<i})\big)}{Z_i}, \qquad Z_i \;=\; \sum_y \max(0, \pi(y) - \pi_d(y)).
+\]
+If all $K$ drafts accept, sample one bonus token from the target's free $(K{+}1)^{\text{th}}$ logit.
+\end{definition}
+
+\begin{remark}[Wall-clock speedup]
+Let $\bar n \in [1, K+1]$ be the mean tokens accepted per round and $\alpha = c_\pi / c_{\pi_d}$ the cost ratio. Then
+\[
+\text{speedup} \;\approx\; \frac{\bar n}{1 + K/\alpha}.
+\]
+For $\alpha \gg K$, speedup $\to \bar n$, capped at $K+1$.
+\end{remark}
+
+\subsection*{3. Theorems and Proofs}
+
+\begin{theorem}[Correctness: exact equivalence to sampling from $\pi$]\label{thm:correctness}
+For any draft distribution $\pi_d$ with $\mathrm{supp}(\pi_d) \supseteq \mathrm{supp}(\pi)$, the speculative-decoding output at any single position is distributed exactly as $\pi$.
+\end{theorem}
+
+\begin{proof}
+Fix a position and condition on $x_{<i}$; write $\pi(y) := \pi(y \mid x_{<i})$ and $\pi_d(y) := \pi_d(y \mid x_{<i})$. The output equals a token $x$ via exactly one of two disjoint events.
+
+\textbf{Case 1 -- accept the draft.} The draft proposes $\tilde x = x$ (probability $\pi_d(x)$) and we accept (probability $\min(1, \pi(x)/\pi_d(x))$):
+\[
+\mathbb{P}_1(x) \;=\; \pi_d(x) \cdot \min\!\Big(1, \tfrac{\pi(x)}{\pi_d(x)}\Big) \;=\; \min(\pi_d(x), \pi(x)).
+\]
+
+\textbf{Case 2 -- reject and resample from $r$.} Total rejection probability:
+\[
+P_{\text{rej}} \;=\; \sum_{\tilde x} \pi_d(\tilde x)\Big(1 - \min\!\big(1, \tfrac{\pi(\tilde x)}{\pi_d(\tilde x)}\big)\Big) \;=\; \sum_{\tilde x} \max(0, \pi_d(\tilde x) - \pi(\tilde x)).
+\]
+Since $\sum_y \pi = \sum_y \pi_d = 1$,
+\[
+\sum_y \max(0, \pi_d(y) - \pi(y)) \;=\; \sum_y \max(0, \pi(y) - \pi_d(y)) \;=\; Z,
+\]
+so $P_{\text{rej}} = Z$. After rejection we sample from $r$, contributing
+\[
+\mathbb{P}_2(x) \;=\; Z \cdot r(x) \;=\; \max(0, \pi(x) - \pi_d(x)).
+\]
+
+\textbf{Sum.} If $\pi(x) \le \pi_d(x)$: $\mathbb{P}_1 + \mathbb{P}_2 = \pi(x) + 0 = \pi(x)$. If $\pi(x) > \pi_d(x)$: $\mathbb{P}_1 + \mathbb{P}_2 = \pi_d(x) + (\pi(x) - \pi_d(x)) = \pi(x)$. Hence $\mathbb{P}(\text{output}=x) = \pi(x)$ for all $x$. \qedhere
+\end{proof}
+
+The argument extends position-by-position: once $\tilde x_i$ is accepted, $x_i$ has the marginal $\pi(\cdot \mid x_{<i})$, and the chain rule gives joint sampling from $\pi$ over the full $K{+}1$ block.
+
+\begin{proposition}[Expected accepted prefix length]\label{prop:expected}
+Let $\alpha_j = \mathbb{E}_{\tilde x_j \sim \pi_d}[\min(1, \pi(\tilde x_j)/\pi_d(\tilde x_j))]$ be the marginal acceptance probability at position $j$. The expected number of accepted draft tokens in a $K$-token round is
+\[
+\bar n_K \;=\; \sum_{i=1}^{K} \prod_{j=1}^{i} \alpha_j.
+\]
+\end{proposition}
+
+\begin{proof}[Sketch]
+Let $A_j = \mathbb{1}[\text{first }j\text{ drafts all accepted}]$. Conditional on the prefix, acceptance is independent across $j$, so $\mathbb{E}[A_j] = \prod_{j'\le j}\alpha_{j'}$. Sum by linearity of expectation. \qedhere
+\end{proof}
+
+\begin{remark}[TV-distance form]
+Using $\alpha = \sum_y \min(\pi(y), \pi_d(y)) = 1 - \tfrac{1}{2}\|\pi - \pi_d\|_1$, acceptance is governed by total variation distance.
+\end{remark}
+
+\begin{corollary}[Optimal draft is the target]\label{cor:optimal}
+If $\pi_d = \pi$, then $\alpha_j = 1$ and $\bar n_K = K$ -- but no compute is saved because the draft costs as much as the target. The interesting regime is a cheap draft slightly worse than the target.
+\end{corollary}
+
+\subsection*{4. Code Sketch and Benchmarks}
+
+The companion notebook (\texttt{cells.json}) implements \texttt{speculative\_decode(draft, target, prompt, K)} using toy categorical distributions over a small vocabulary -- no GPT inference is required, since the math \emph{is} the chapter (Chapter~32 covers GPT-on-MPS benchmarking).
+
+\begin{example}[Experiments]
+(i) Draw $10{,}000$ tokens via the speculative protocol and compare against direct samples from $\pi$; a $\chi^2$ goodness-of-fit test fails to reject. (ii) Sweep noise $q$ where $\pi_d = (1-q)\pi + q\,\mathrm{Unif}$; plot $\bar n$ and predicted wall-clock speedup at $K=4,\ \alpha=7$. (iii) Identify the breakeven $q$ at which speculative decoding loses to plain decoding.
+\end{example}
+
+\subsection*{5. Connection to LLMs}
+
+Production inference engines -- \textbf{vLLM}, \textbf{llama.cpp}, \textbf{MLX-lm}, \textbf{TensorRT-LLM} -- all ship speculative decoding. Reported wall-clock speedups: $1.5$--$3\times$ for code/translation (high draft-target agreement) and $1.1$--$1.5\times$ for open-ended chat. Variants:
+
+\begin{itemize}
+  \item \textbf{Self-speculation / Medusa heads.} Attach extra prediction heads to the target itself, eliminating the separate draft model.
+  \item \textbf{Tree attention / SpecInfer.} Verify multiple candidate continuations in one forward pass via causal-mask trees, raising $\bar n$.
+  \item \textbf{EAGLE / Lookahead.} Train a tiny draft head conditioned on the target's hidden state for higher acceptance.
+\end{itemize}
+
+Theorem~\ref{thm:correctness} transfers verbatim to all these schemes: as long as verification uses the rejection rule with the residual-distribution fallback, the output marginal is \emph{exactly} $\pi$. No quality is sacrificed for the speedup -- a rare free lunch in deep learning.

@@ -1,0 +1,102 @@
+\subsection*{Motivation}
+
+Llama-3 70B in \texttt{bfloat16} is 140~GB of weights -- larger than any consumer GPU's VRAM and most workstation RAM. The same model in \texttt{int4} is roughly 40~GB and fits on a single 48~GB card with room for the KV-cache. The accuracy cost? For well-calibrated \texttt{int8} quantization, perplexity typically rises by less than $0.5\%$; for \texttt{int4}, by $1$--$3\%$. Quantization is the single technique most responsible for moving frontier-class models out of the data center and onto laptops.
+
+We restrict attention to \emph{post-training quantization} (PTQ): take an already-trained fp16/bf16 checkpoint and replace its weights with low-precision approximations without further gradient updates. The mathematical object of study is a map $Q : \mathbb{R}^{m\times n}\to\mathbb{Z}^{m\times n}$ together with a dequantizer $D$ that approximates the identity, $D(Q(W))\approx W$. Two questions follow: (i) what is the worst-case reconstruction error $\|W - D(Q(W))\|$ (Ch.~6 norm theory), and (ii) how does that error propagate to the cross-entropy and hence the perplexity $e^{\mathrm{CE}}$ (Ch.~17)?
+
+\subsection*{Definitions}
+
+\begin{definition}[Affine quantizer]
+Fix bit-width $b\in\{8,4,2\}$ and let $N=2^b$. An \emph{affine} quantizer with scale $s>0$ and zero-point $z\in\mathbb{Z}$ is the function
+\[
+Q_{s,z}(w) \;=\; \mathrm{clip}\!\big(\mathrm{round}(w/s) - z,\ q_{\min},\ q_{\max}\big),
+\]
+where the integer range is $[q_{\min},q_{\max}]=[-N/2,\,N/2-1]$ (signed) or $[0,\,N-1]$ (unsigned). The dequantizer is $D_{s,z}(q)=(q+z)\cdot s$. The map is \emph{symmetric} when $z=0$.
+\end{definition}
+
+\begin{definition}[Calibration]
+Given a calibration set $\{x_1,\dots,x_K\}\subset\mathbb{R}^n$ and a layer with weight $W$, the scale $s$ is chosen to cover the dynamic range observed during a forward pass -- typically $s=\max_{ij}|w_{ij}|/(N/2-1)$ (max-abs) or the $99.99$-percentile absolute value (percentile clipping, robust to outliers).
+\end{definition}
+
+\begin{definition}[Granularity]
+\emph{Per-tensor} quantization uses one scalar $s$ for the entire matrix. \emph{Per-row} (per-output-channel) gives each row $W_{i,:}$ its own $s_i$. \emph{Per-channel-group} breaks each row into groups of $128$ contiguous elements, each with its own scale. The metadata cost in bits per weight is, respectively, $O(1/mn)$, $O(1/n)$, $O(1/g)$, traded against tighter dynamic range.
+\end{definition}
+
+\begin{definition}[Weight-only quantization, W$b$A16]
+Only the weight tensors are stored in \texttt{int}$b$; activations stay in fp16/bf16. The matmul dequantizes weights on-the-fly. This avoids the catastrophic effect of \emph{activation outliers} identified by Dettmers et al.\ (2022, LLM.int8()).
+\end{definition}
+
+\begin{definition}[Layer-local objective]
+For a linear layer $y=Wx$ and calibration matrix $X\in\mathbb{R}^{n\times K}$, the \emph{layer-local quantization problem} is
+\[
+\widehat W \;\in\; \arg\min_{\widehat W \in \mathcal{Q}}\; \big\|WX - \widehat W X\big\|_F^2,
+\]
+where $\mathcal{Q}$ is the discrete set of representable quantized matrices. This is the objective minimized by GPTQ (Frantar et al., 2023).
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Round-to-nearest error bound]\label{thm:rtn}
+Let $Q_s$ be the symmetric affine quantizer with scale $s$ and let $\widehat w = D_s(Q_s(w)) = s\cdot\mathrm{round}(w/s)$. For every $w$ in the representable range,
+\[
+|\,w - \widehat w\,| \;\le\; s/2.
+\]
+\end{theorem}
+
+\begin{proof}
+By definition of round-to-nearest, for any real $u$, $|u - \mathrm{round}(u)|\le 1/2$. Set $u=w/s$: $|w/s - \mathrm{round}(w/s)|\le 1/2$. Multiply by $s>0$ to get $|w - s\cdot\mathrm{round}(w/s)| = |w - \widehat w|\le s/2$.
+\end{proof}
+
+\begin{corollary}[Frobenius bound]\label{cor:frob}
+For an $m\times n$ matrix $W$ quantized symmetrically per-tensor with scale $s$, $\|W-\widehat W\|_F \le (s/2)\sqrt{mn}$.
+\end{corollary}
+
+\begin{theorem}[Per-row beats per-tensor on heterogeneous matrices]\label{thm:perrow}
+Let $W\in\mathbb{R}^{m\times n}$ have rows with $\ell_\infty$ norms $r_i = \|W_{i,:}\|_\infty$. With $b$ bits and $N=2^b$:
+\begin{itemize}
+\item \emph{Per-tensor} scale $s_\star = (\max_i r_i)/(N/2-1)$ gives entry error $\le s_\star/2$, so
+\[
+\|W-\widehat W\|_F^2 \;\le\; \frac{mn}{4}\cdot\frac{(\max_i r_i)^2}{(N/2-1)^2}.
+\]
+\item \emph{Per-row} scale $s_i = r_i/(N/2-1)$ gives
+\[
+\|W-\widehat W\|_F^2 \;\le\; \frac{n}{4(N/2-1)^2}\cdot\sum_{i=1}^m r_i^2.
+\]
+\end{itemize}
+The ratio is
+\[
+\frac{\text{per-row bound}}{\text{per-tensor bound}} \;=\; \frac{1}{m}\cdot\frac{\sum_i r_i^2}{(\max_i r_i)^2} \;\le\; 1,
+\]
+with equality iff every row has the same $\ell_\infty$ norm. The gap grows with the variance of $\{r_i\}$.
+\end{theorem}
+
+\begin{proof}
+Both inequalities follow from Theorem~\ref{thm:rtn} applied entrywise; the ratio identity is algebra. The bound is tight when one row dominates ($\max\gg$ mean), wasting most of the integer grid on small rows.
+\end{proof}
+
+\begin{theorem}[GPTQ row decomposition]\label{thm:gptq}
+For a single layer with weight $W\in\mathbb{R}^{m\times n}$ and calibration Hessian $H = XX^\top \in \mathbb{R}^{n\times n}$ (PSD by construction), the layer-local objective decouples row-wise:
+\[
+\big\|WX-\widehat W X\big\|_F^2 \;=\; \sum_{i=1}^m (W_{i,:} - \widehat W_{i,:})\, H\, (W_{i,:} - \widehat W_{i,:})^\top.
+\]
+\end{theorem}
+
+\begin{proof}
+$\|WX - \widehat W X\|_F^2 = \mathrm{tr}\big((W-\widehat W)XX^\top(W-\widehat W)^\top\big) = \sum_i \mathrm{row}_i(W-\widehat W)\,H\,\mathrm{row}_i(W-\widehat W)^\top$.
+\end{proof}
+
+\begin{remark}[GPTQ algorithm sketch]
+Process columns $j=1,\dots,n$ in order. At step $j$, for each row $i$ quantize $w_{ij}$ to $\widehat w_{ij}$, compute $\delta = w_{ij}-\widehat w_{ij}$, and update unquantized columns $k>j$ by the Hessian-correcting term
+\[
+w_{ik} \;\leftarrow\; w_{ik} \;-\; \delta\cdot \frac{(H^{-1})_{jk}}{(H^{-1})_{jj}}.
+\]
+The Cholesky factor of $H^{-1}$ allows this in $O(n^3)$ per layer. The correction absorbs the rounding error of column $j$ into the not-yet-quantized columns, partially cancelling subsequent rounding. The naive RTN baseline is the special case where the correction is omitted.
+\end{remark}
+
+\subsection*{Code sketch and benchmarks}
+
+The accompanying notebook contains six experiments. (1) A bytes-math table for GPT-2 small (124M), Llama-7B, Llama-70B at fp16/int8/int4. (2) A round-to-nearest implementation \verb|quantize(w, bits)| with measured Frobenius error on a Gaussian matrix. (3) A $64\times 128$ matrix with row norms $r_i = 10^{i/64}$ comparing per-tensor and per-row scales at int4: per-row reduces error by an order of magnitude. (4) A GPTQ implementation on a $d_{\mathrm{in}}=16, d_{\mathrm{out}}=8$ linear layer with 100-sample calibration: GPTQ beats RTN on the layer-output reconstruction error. (5) End-to-end perplexity: a miniature Ch.~27-style numpy GPT is trained briefly, then quantized to int8 and int4 by RTN; perplexity on the training corpus is reported before and after.
+
+\subsection*{Connection to LLMs}
+
+Quantization closes the \emph{deployment gap}. Training requires fp32 master weights (Ch.~14 AdamW state, Ch.~27 mixed precision); inference needs only the forward pass, where weight precision dominates memory bandwidth on modern GPUs. The empirical rule -- $<0.5\%$ perplexity loss for int8, $1$--$3\%$ for int4 with GPTQ -- means a Llama-3 70B user trades roughly $2\%$ perplexity for a $3.5\times$ memory reduction and $2\times$ inference throughput. AWQ, SmoothQuant, and HQQ extend this picture: all minimize variants of Theorem~\ref{thm:gptq}'s layer-local objective, differing in how they reweight by activation statistics. The thread that ties them all to first principles is Theorem~\ref{thm:rtn}: every byte saved costs at most $s/2$ of error per weight, and the entire research program is about choosing $s$ wisely.
