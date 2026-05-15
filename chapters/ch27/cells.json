@@ -418,5 +418,177 @@
     ],
     "execution_count": null,
     "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Scaling up: a real torch / MLX GPT on TinyStories\n",
+      "\n",
+      "The numpy implementation above (~18K params, 28-char vocab) is the *no-dependencies* baseline: every gradient is hand-coded, every line auditable. It cannot generate coherent text. Below we scale up by ~3 orders of magnitude using PyTorch (canonical) and MLX (Apple-native parallel cell). Both implementations live in this chapter as standalone scripts (`torch_gpt.py`, `mlx_gpt.py`); the cells below demo the pipeline."
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "### Model spec\n",
+      "\n",
+      "- **Architecture:** decoder-only, pre-norm, weight-tied head\n",
+      "- **Layers:** 6\n",
+      "- **$d_{\\text{model}}$:** 384, **heads:** 6 ($d_k=64$), **$d_{\\text{ff}}$:** 1536\n",
+      "- **Context:** 256, **Vocab:** 50,257 (tiktoken `gpt2`)\n",
+      "- **Params:** ~30M (weight-tied)\n",
+      "- **Optim:** AdamW $(\\beta_1{=}0.9,\\ \\beta_2{=}0.95,\\ \\text{wd}{=}0.1)$ + warmup-cosine, grad-clip $1.0$"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import torch\n",
+      "\n",
+      "def pick_device():\n",
+      "    if hasattr(torch.backends, 'mps') and torch.backends.mps.is_available():\n",
+      "        return torch.device('mps')\n",
+      "    if torch.cuda.is_available():\n",
+      "        return torch.device('cuda')\n",
+      "    return torch.device('cpu')\n",
+      "\n",
+      "device = pick_device()\n",
+      "print(f'torch {torch.__version__}  device: {device}')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import sys, os\n",
+      "sys.path.insert(0, os.path.join(os.getcwd(), 'chapters', 'ch27'))\n",
+      "from torch_gpt import GPT, GPTConfig\n",
+      "\n",
+      "cfg = GPTConfig()  # defaults: 6L, d=384, 6h, d_ff=1536, ctx=256, V=50257\n",
+      "model = GPT(cfg).to(device)\n",
+      "print(f'params: {model.num_params()/1e6:.2f}M')\n",
+      "print(f'  layers={cfg.n_layer}  d={cfg.d_model}  heads={cfg.n_head}  ctx={cfg.ctx_len}  V={cfg.vocab_size}')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "from torch_gpt import load_corpus, build_tokenizer\n",
+      "\n",
+      "# small slice for the notebook demo (full run uses 2M chars)\n",
+      "text = load_corpus(max_chars=50_000)\n",
+      "tok, tname = build_tokenizer(text)\n",
+      "print(f'tokenizer: {tname}  vocab={tok.vocab_size}')\n",
+      "\n",
+      "ids = torch.tensor(tok.encode(text), dtype=torch.long)\n",
+      "print(f'tokens: {len(ids):,}')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import math, time\n",
+      "from torch_gpt import GPT, GPTConfig, lr_at\n",
+      "\n",
+      "# rebuild model with the actual tokenizer's vocab size\n",
+      "cfg = GPTConfig(vocab_size=tok.vocab_size)\n",
+      "model = GPT(cfg).to(device)\n",
+      "opt = torch.optim.AdamW(model.parameters(), lr=3e-4, betas=(0.9, 0.95), weight_decay=0.1)\n",
+      "\n",
+      "ctx_len, batch = cfg.ctx_len, 4\n",
+      "def get_batch():\n",
+      "    ix = torch.randint(0, len(ids) - ctx_len - 1, (batch,))\n",
+      "    x = torch.stack([ids[i:i+ctx_len] for i in ix]).to(device)\n",
+      "    y = torch.stack([ids[i+1:i+1+ctx_len] for i in ix]).to(device)\n",
+      "    return x, y\n",
+      "\n",
+      "model.train()\n",
+      "losses = []\n",
+      "t0 = time.time()\n",
+      "for step in range(10):\n",
+      "    x, y = get_batch()\n",
+      "    _, loss = model(x, y)\n",
+      "    opt.zero_grad(set_to_none=True)\n",
+      "    loss.backward()\n",
+      "    torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)\n",
+      "    for g in opt.param_groups:\n",
+      "        g['lr'] = lr_at(step, warmup=2, total=10, lr_max=3e-4, lr_min=3e-5)\n",
+      "    opt.step()\n",
+      "    losses.append(float(loss.item()))\n",
+      "    print(f'  step {step:2d}  loss {losses[-1]:7.4f}')\n",
+      "print(f'\\\\n10 steps in {time.time()-t0:.1f}s on {device}')\n",
+      "print(f'init {losses[0]:.3f}  ->  step-9 {losses[-1]:.3f}')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "For the full training run (3000 steps, ~30M-param model, batch 16, ~12M tokens), use the standalone script:\n",
+      "\n",
+      "```bash\n",
+      "python3 chapters/ch27/torch_gpt.py --train --steps 3000\n",
+      "```\n",
+      "\n",
+      "Wall-clock and sample generations from the actual Mac run live in [`training_run.md`](training_run.md)."
+    ]
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## MLX-native parallel implementation\n",
+      "\n",
+      "MLX is Apple's array framework for Apple-silicon. Same architecture, same hyperparameters as the PyTorch version above; the difference is the framework underneath. On M-series machines MLX typically runs ~2-3$\\times$ faster than PyTorch+MPS for this scale because of tighter integration with Metal and unified memory.\n",
+      "\n",
+      "On non-Mac systems (Linux, Windows) the cell below prints a graceful skip message --- MLX is Mac-only."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import sys\n",
+      "try:\n",
+      "    import mlx.core as mx\n",
+      "    import mlx.nn as nn\n",
+      "    print(f'MLX available  mx version: {mx.__version__ if hasattr(mx, \"__version__\") else \"installed\"}')\n",
+      "    print('See chapters/ch27/mlx_gpt.py for the full MLX implementation.')\n",
+      "    print('Run: python3 chapters/ch27/mlx_gpt.py --train --steps 3000')\n",
+      "except Exception as e:\n",
+      "    print(f'MLX not available on this system ({sys.platform}): {e.__class__.__name__}')\n",
+      "    print('MLX is Mac-only. On macOS install with: pip install mlx mlx-lm')\n",
+      "    print('The torch implementation above runs on this system; MLX is the parallel Apple-native cell.')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Comparison and closing\n",
+      "\n",
+      "| Implementation     | Params  | Vocab     | Deps         | Coherent text? | Use when                                  |\n",
+      "| ------------------ | ------- | --------- | ------------ | -------------- | ----------------------------------------- |\n",
+      "| numpy (above)      | ~18K    | 28 chars  | numpy only   | no             | learning the gradients hand-on            |\n",
+      "| `torch_gpt.py`     | ~30M    | 50,257    | torch+tt+ds  | yes            | actual training, MPS or CUDA              |\n",
+      "| `mlx_gpt.py`       | ~30M    | 50,257    | mlx          | yes            | Apple-silicon-native at ~2-3$\\times$ MPS  |\n",
+      "\n",
+      "All three share the *same control flow*: `for step in range(T_train): batch -> forward -> CE loss -> backward -> clip -> AdamW`. The numpy version is the verifiable baseline; the torch + MLX versions are the same recipe at production scale."
+    ]
   }
 ]

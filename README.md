@@ -106,6 +106,10 @@ To refresh the auto-generated tables of contents and verify that every chapter e
 python3 generate.py
 ```
 
+### Hardware-enabled training (M-series Mac or NVIDIA GPU)
+
+Chapter 27's pure-numpy implementation is the "no-dependencies" baseline. For a real ~30M-param GPT trained on TinyStories, see `chapters/ch27/torch_gpt.py` (PyTorch, MPS/CUDA) or `chapters/ch27/mlx_gpt.py` (Apple-native). Install: `pip install -r requirements.txt`. See `chapters/ch27/training_run.md` for benchmarks.
+
 ## Cross-links
 
 Where a chapter cites a piece of mathematical machinery covered in more atomic detail elsewhere, it will link to the corresponding concept page in the companion repo [pleyva2004/math-foundations](https://github.com/pleyva2004/math-foundations). This repository is the *chain*; that repository is the *atlas*.

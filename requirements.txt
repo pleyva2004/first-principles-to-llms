@@ -1,0 +1,11 @@
+# Core (chain repo Ch 27 numpy version + Ch 28-31 demos work with these alone)
+numpy>=1.24
+matplotlib>=3.5
+
+# Hardware-enabled training (Sub-project A)
+# Install on Mac: torch+MPS for canonical, MLX for Apple-native
+torch>=2.4
+datasets>=2.14
+tiktoken>=0.5
+# Mac-only:
+mlx>=0.20 ; sys_platform == "darwin"

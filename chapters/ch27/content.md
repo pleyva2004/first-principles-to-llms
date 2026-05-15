@@ -62,3 +62,27 @@ The notebook implements the full forward/backward of a 2-layer tiny GPT in numpy
 ## Connection to LLMs
 
 This chapter is the recipe. GPT-2 used exactly this pipeline (warmup $\approx$ 2K steps, cosine to $0.1\eta_{\max}$, clip $= 1.0$, AdamW $\beta_2 = 0.95$). Llama-2 used the same pipeline with a larger $W$, longer $T$, and bf16 mixed precision. What changes from "tiny GPT in this notebook" to "GPT-4 trained on a supercluster" is purely *scale*: $V$ from 30 to 100K, $T_{\text{ctx}}$ from 16 to 8K–128K, $d$ from 32 to 12K, $N$ from $10^4$ to $10^{12}$, and $D$ from $10^3$ tokens to $10^{13}$ tokens. The control flow of `for step in range(T_train): batch → forward → loss → backward → clip → adamw_step` is *byte-identical*.
+
+## Scaling up: a real torch / MLX GPT on TinyStories
+
+The pure-numpy implementation above is pedagogically clear but stops at 18K parameters and 28-character vocabulary --- coherent text generation requires more capacity. This subsection scales up by ~3 orders of magnitude using PyTorch (canonical) and MLX (Apple-native parallel cell).
+
+### Model
+
+A 6-layer pre-norm decoder with $d_{\text{model}}=384$, 6 heads ($d_k=64$), $d_{\text{ff}}=1536$, context length 256. With the GPT-2 vocabulary (50,257) and weight-tied embeddings/head, total parameter count lands at $\approx 30$M --- GPT-2-small class but tinier, in the same ballpark as `nanoGPT`. Architecture is identical across the PyTorch and MLX implementations; only the framework changes.
+
+### Tokenizer
+
+We use `tiktoken`'s `gpt2` BPE encoding (50,257 merges). The fallback path is character-level when `tiktoken` is unavailable, so the training script always runs.
+
+### Training
+
+AdamW with $\beta_1=0.9$, $\beta_2=0.95$, weight decay $0.1$. Linear warmup (5\% of steps) then cosine decay from $\eta_{\max}=3\!\times\!10^{-4}$ to $\eta_{\min}=3\!\times\!10^{-5}$. Global gradient norm is clipped at $1.0$. Batch size 16, ~3000 steps, ~12M training tokens. Wall-clock target on M4 Pro: torch+MPS $\approx 45$ min, MLX $\approx 25$ min.
+
+### Validation
+
+After training, the model generates ~100-token coherent stories at temperature 0.7 / top-k 40. See `training_run.md` for sample generations and wall-clock numbers from the actual Mac run.
+
+### Cross-link to MLX
+
+For Apple-silicon-native execution at ~2--3$\times$ torch+MPS throughput, see `mlx_gpt.py`. Same architecture, same hyperparameters.
