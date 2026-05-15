@@ -1,0 +1,95 @@
+\subsection*{Motivation}
+
+A linear map $x \mapsto Wx + b$ (Chapter~5) can only carve $\mathbb{R}^n$ into half-spaces and stretch them affinely. The continuous functions on a compact set $K \subset \mathbb{R}^n$ (Chapter~4) form a vastly richer space. To bridge the gap we interleave linear maps with a fixed pointwise nonlinearity. The resulting object --- a \emph{multilayer perceptron} (MLP) --- is dense in $C(K)$. This is the engine inside every transformer's feed-forward block.
+
+\subsection*{Definitions}
+
+\begin{definition}[Multilayer perceptron]
+Let $L \geq 1$ and widths $d_0, d_1, \dots, d_L \in \mathbb{N}$. A \emph{multilayer perceptron of depth $L$} with activation $\sigma : \mathbb{R} \to \mathbb{R}$ (applied componentwise) is the function $f : \mathbb{R}^{d_0} \to \mathbb{R}^{d_L}$ defined by
+\begin{align*}
+h^{(0)} &= x, \\
+h^{(\ell)} &= \sigma\!\big(W^{(\ell)} h^{(\ell-1)} + b^{(\ell)}\big), \quad 1 \leq \ell \leq L-1, \\
+f(x) &= W^{(L)} h^{(L-1)} + b^{(L)},
+\end{align*}
+where $W^{(\ell)} \in \mathbb{R}^{d_\ell \times d_{\ell-1}}$ and $b^{(\ell)} \in \mathbb{R}^{d_\ell}$. We call $\max_{0 \leq \ell \leq L} d_\ell$ the \emph{width} and $L$ the \emph{depth}.
+\end{definition}
+
+\begin{definition}[Universal approximator]
+A class $\mathcal{F} \subset C(K, \mathbb{R})$ is \emph{dense} in $C(K)$ --- equivalently a \emph{universal approximator} --- if
+\[
+\forall f \in C(K)\;\, \forall \varepsilon > 0\;\, \exists g \in \mathcal{F} : \;\sup_{x \in K} \lvert f(x) - g(x) \rvert < \varepsilon.
+\]
+\end{definition}
+
+\begin{definition}[Sigmoidal, discriminatory]
+A measurable $\sigma : \mathbb{R} \to \mathbb{R}$ is \emph{sigmoidal} if $\sigma(t) \to 1$ as $t \to +\infty$ and $\sigma(t) \to 0$ as $t \to -\infty$. It is \emph{discriminatory} on $K = [0,1]^n$ if for every finite signed regular Borel measure $\mu$ on $K$,
+\[
+\int_K \sigma(w^\top x + b)\, d\mu(x) = 0 \;\;\forall\, w \in \mathbb{R}^n,\; b \in \mathbb{R} \;\;\Longrightarrow\;\; \mu = 0.
+\]
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Cybenko 1989; Hornik 1989]\label{thm:uat}
+Let $\sigma : \mathbb{R} \to \mathbb{R}$ be a continuous sigmoidal function and let $K \subset \mathbb{R}^n$ be compact. The class
+\[
+\mathcal{F}_\sigma = \Big\{ g(x) = \sum_{j=1}^{N} \alpha_j\, \sigma(w_j^\top x + b_j) : N \in \mathbb{N},\, \alpha_j, b_j \in \mathbb{R},\, w_j \in \mathbb{R}^n \Big\}
+\]
+is dense in $C(K)$.
+\end{theorem}
+
+\begin{proof}[Proof sketch (Hahn--Banach + Riesz)]
+Suppose, for contradiction, $\mathcal{F}_\sigma$ is \emph{not} dense in $C(K)$. Then $S := \overline{\mathcal{F}_\sigma}$ is a proper closed subspace of the Banach space $\big(C(K), \lVert \cdot \rVert_\infty\big)$. Pick $f_0 \in C(K) \setminus S$. By the Hahn--Banach theorem there exists a continuous linear functional $\Lambda : C(K) \to \mathbb{R}$ with
+\[
+\Lambda \not\equiv 0, \qquad \Lambda(g) = 0 \text{ for all } g \in S.
+\]
+The Riesz--Markov representation theorem identifies $C(K)^*$ with the space of finite signed regular Borel measures on $K$: there exists a nonzero such measure $\mu$ with
+\[
+\Lambda(g) = \int_K g(x)\, d\mu(x), \qquad g \in C(K).
+\]
+Each ridge function $x \mapsto \sigma(w^\top x + b)$ lies in $\mathcal{F}_\sigma \subset S$, hence
+\[
+\int_K \sigma(w^\top x + b)\, d\mu(x) = 0 \qquad \forall w \in \mathbb{R}^n,\; b \in \mathbb{R}.
+\]
+Cybenko's lemma asserts that every continuous sigmoidal $\sigma$ is discriminatory. (Sketch: as $\lambda \to \infty$, $\sigma(\lambda(w^\top x + b) + \varphi)$ converges pointwise (and boundedly) to a step function of the half-space $\{w^\top x + b > 0\}$; the dominated-convergence theorem transfers vanishing of the ridge integrals to vanishing of $\mu$ on every half-space, and finite signed measures are determined by their values on half-spaces, e.g.\ via the Fourier transform.) Therefore $\mu = 0$, contradicting $\Lambda \not\equiv 0$. Hence $\mathcal{F}_\sigma$ is dense.
+\end{proof}
+
+\begin{proposition}[Linear-only networks collapse]\label{prop:linear-collapse}
+If $\sigma = \mathrm{id}$, every depth-$L$ MLP is itself a single affine map. In particular, the class is not dense in $C(K)$ whenever $K$ contains a nontrivial open set.
+\end{proposition}
+
+\begin{proof}
+By induction on $\ell$, $h^{(\ell)} = W^{(\ell)} h^{(\ell-1)} + b^{(\ell)}$. Unrolling,
+\[
+f(x) = W' x + b', \qquad W' = W^{(L)} W^{(L-1)} \cdots W^{(1)}, \qquad b' = \sum_{\ell=1}^{L} \!\Big(\!\!\prod_{k=L}^{\ell+1} W^{(k)}\!\Big) b^{(\ell)},
+\]
+where the empty product (when $\ell = L$) is the identity. Thus $f$ is affine. An affine $f$ cannot uniformly approximate, e.g., $x \mapsto \sin(2\pi x)$ on $[-1,1]$ to error $< 1/4$, since the best affine approximant on a symmetric interval is $0$ and $\lVert \sin(2\pi \cdot)\rVert_\infty = 1$.
+\end{proof}
+
+\begin{remark}
+Proposition~\ref{prop:linear-collapse} shows the nonlinearity $\sigma$ is not cosmetic: \emph{depth without nonlinearity buys nothing}. UAT therefore relies on $\sigma$ being genuinely nonlinear.
+\end{remark}
+
+\begin{theorem}[Depth separation, Telgarsky 2016]\label{thm:depth}
+For every $k \in \mathbb{N}$ there is a function $f_k : [0,1] \to [0,1]$ realizable \emph{exactly} by a ReLU network of depth $O(k^3)$ and width $O(1)$ such that any ReLU network of depth at most $k$ that approximates $f_k$ in $L^1([0,1])$ to error $< 1/32$ must have width $\geq 2^k$.
+\end{theorem}
+
+\begin{proof}[Proof sketch]
+Let $\Delta : [0,1] \to [0,1]$ be the triangular sawtooth $\Delta(x) = 2x$ for $x \in [0, 1/2]$, $\Delta(x) = 2(1-x)$ for $x \in [1/2, 1]$, and define $f_k = \Delta^{\circ k}$. Each composition doubles the number of monotone pieces, so $f_k$ has $2^k$ such pieces and $L^1$-distance $1/4$ from any function with $\leq 2^{k-1}$ pieces. A ReLU network of width $w$ and depth $d$ realizes a continuous piecewise-linear function with at most $(2w)^d$ pieces (each ReLU at most doubles the count). Forcing $(2w)^d \geq 2^{k-1}$ at $d = k$ yields $w \geq 2^{(k-1)/k - 1} \cdot 2^{k/k}$; a careful counting argument tightens this to the stated $2^k$. The composition $\Delta^{\circ k}$ on the other hand is realised by stacking $k$ copies of the constant-width gadget that implements $\Delta$.
+\end{proof}
+
+\begin{remark}
+Theorem~\ref{thm:uat} says shallow nets \emph{can} represent everything; Theorem~\ref{thm:depth} says compositionality (depth) is \emph{exponentially more parameter-efficient} for hierarchical targets. Modern deep learning lives in the gap between these two statements.
+\end{remark}
+
+\subsection*{Code sketch}
+
+The companion notebook \texttt{cells.json}: (i) hand-builds a numpy MLP with $\tanh$ activation; (ii) fits a 32-hidden-unit MLP to $\sin(2\pi x)$ on $[-1,1]$ via least-squares on hidden features and verifies $\sup_x \lvert f(x) - \hat f(x)\rvert < 0.05$; (iii) compares width-32-depth-1 against width-8-depth-3 at matched parameter budget and observes lower error from the deeper net; (iv) numerically confirms the linear-only collapse $f(x) = W' x + b'$ predicted by Proposition~\ref{prop:linear-collapse}.
+
+\subsection*{Connection to LLMs}
+
+Every transformer block (Chapter~23, forthcoming) contains a position-wise feed-forward module
+\[
+\mathrm{FFN}(x) = W_2\, \sigma(W_1 x + b_1) + b_2,
+\]
+i.e.\ a single-hidden-layer MLP applied independently to each token. This is exactly the universal approximator of Theorem~\ref{thm:uat}: attention mixes information \emph{across} positions, while the FFN does the nonlinear pointwise computation that --- by Cybenko --- can in principle realise any continuous transformation of the embedding. LLMs make $W_1$ wide ($4d$ or $8d$ inner dimension) precisely to exploit Theorem~\ref{thm:uat}'s expressive guarantee, while stacking $L$ such blocks exploits Theorem~\ref{thm:depth}'s exponential depth advantage.

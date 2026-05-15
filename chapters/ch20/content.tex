@@ -1,0 +1,152 @@
+\subsection*{Motivation}
+
+Feedforward networks (Chapters~17--19) are fixed-depth pipelines, but
+language, audio, and code are \emph{sequences}. We need a model that
+consumes one token at a time, accumulates context, and emits one prediction
+per step. The Recurrent Neural Network (RNN) was the dominant answer
+from the late 1980s through 2017. We derive its dynamics, prove the
+\emph{vanishing/exploding gradient theorem} (Pascanu, Mikolov, Bengio
+2013) using the SVD of Chapter~6 and the chain rule of Chapter~18, and
+show that this failure mode---together with an information bottleneck---is
+the precise reason attention (Chapters~21--24) was invented.
+
+\subsection*{Definitions}
+
+\begin{definition}[Sequence model]
+A causal map $f : \mathcal{X}^T \to \mathcal{Y}^T$ such that
+$y_t = f_t(x_1, \dots, x_t)$ for every $t$.
+\end{definition}
+
+\begin{definition}[RNN cell]
+Fix hidden dimension $d$ and parameters
+$W_h \in \mathbb{R}^{d \times d}$,
+$W_x \in \mathbb{R}^{d \times \dim x}$, $b \in \mathbb{R}^d$, and a
+pointwise nonlinearity $\sigma$. The recursion is
+\[
+  h_t = \sigma(W_h h_{t-1} + W_x x_t + b), \qquad h_0 = 0,
+\]
+with output $y_t = W_y h_t$.
+\end{definition}
+
+\begin{definition}[Backpropagation through time (BPTT)]
+Unroll the recursion into an acyclic graph of depth $T$ with the
+parameters $(W_h, W_x, b)$ shared across every time step, then apply
+the backprop algorithm of Chapter~18 to that unrolled graph. The
+gradient of a shared weight is the sum of its per-step gradients.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Linear vanishing/exploding gradient; Pascanu et al.~2013]
+\label{thm:vanish}
+Let $h_t = W h_{t-1}$ with $W \in \mathbb{R}^{d \times d}$, and let
+$L$ be a scalar loss depending on $h_T$. Then for any $t < T$,
+\[
+  \frac{\partial L}{\partial h_t}
+  = (W^\top)^{T-t}\,\frac{\partial L}{\partial h_T},
+  \qquad
+  \Big\|\tfrac{\partial L}{\partial h_t}\Big\|_2
+  \leq \sigma_{\max}(W)^{T-t}\,
+       \Big\|\tfrac{\partial L}{\partial h_T}\Big\|_2,
+\]
+with the upper bound achievable.
+\end{theorem}
+
+\begin{proof}
+By the multivariable chain rule of Chapter~18,
+$\partial h_t / \partial h_{t-1} = W$, so
+$\partial L / \partial h_{t-1} = W^\top\,\partial L/\partial h_t$.
+Iterating $T-t$ times gives the claimed product. By Chapter~6,
+$W = U\Sigma V^\top$ with $\Sigma = \mathrm{diag}(\sigma_1, \dots,
+\sigma_d)$ and $U, V$ orthogonal. Then $W^\top = V\Sigma U^\top$ and
+\[
+  (W^\top)^{T-t}
+  = V \Sigma U^\top V \Sigma U^\top \cdots
+\]
+which does \emph{not} simplify in general unless we reuse the SVD of
+$W^{T-t}$ instead: writing $W^{T-t} = \tilde U \tilde \Sigma \tilde V^\top$,
+the singular values are bounded by $\sigma_{\max}(W)^{T-t}$ via
+submultiplicativity $\|AB\|_2 \leq \|A\|_2\|B\|_2$ of the operator norm.
+Hence
+$\|(W^\top)^{T-t}\|_2 = \|W^{T-t}\|_2 \leq \sigma_{\max}(W)^{T-t}$.
+Equality is achieved when $W$ is normal (so $W^{T-t}$ has singular
+values $|\lambda_i(W)|^{T-t}$) and $\partial L/\partial h_T$ is aligned
+with the top singular direction.
+\end{proof}
+
+\begin{corollary}[Saturating nonlinearity]
+\label{cor:nonlin}
+If $\sigma$ has $|\sigma'| \leq c$ pointwise (for $\tanh$, $c = 1$),
+then with $D_t = \mathrm{diag}(\sigma'(\cdot))$ a diagonal Jacobian,
+\[
+  \Big\|\tfrac{\partial L}{\partial h_t}\Big\|_2
+  \leq c^{T-t}\,\|W\|_2^{T-t}\,
+       \Big\|\tfrac{\partial L}{\partial h_T}\Big\|_2.
+\]
+\end{corollary}
+
+\begin{proof}
+The Jacobian of one step is $D_t W$ with $\|D_t\|_2 \leq c$. Apply
+submultiplicativity $T-t$ times.
+\end{proof}
+
+\begin{remark}
+For $\tanh$, saturation pushes $\|D_t\|_2$ \emph{below} $1$ in the
+asymptotic regions, so nonlinearity tends to \emph{worsen} vanishing.
+This is the regime in which standard RNNs fail to learn dependencies
+beyond roughly $T - t \sim 20$--$50$ steps.
+\end{remark}
+
+\begin{theorem}[Information bottleneck of an RNN]
+\label{thm:bottleneck}
+The hidden state $h_t \in \mathbb{R}^d$ is a deterministic function of
+$(x_1, \dots, x_t)$, so by the data-processing inequality applied to
+the Markov chain $(x_1, \dots, x_t) \to h_t \to \hat x_s$ for $s \leq t$,
+the mutual information satisfies
+$I(x_s ; \hat x_s) \leq I(x_s ; h_t) \leq d \cdot B$, where $B$ is the
+per-coordinate bit precision. Once $t \log_2 |\mathcal{X}| \gg d B$,
+some information about earlier tokens is provably destroyed.
+\end{theorem}
+
+\begin{proof}[Sketch]
+Apply the data-processing inequality (a standard result of information
+theory) to the deterministic Markov chain. The right inequality is
+the channel capacity of a $d$-dimensional vector at $B$ bits per
+coordinate.
+\end{proof}
+
+\begin{proposition}[Attention dissolves both bottlenecks --- sketch]
+\label{prop:attention}
+Let $h_T = \sum_{s=1}^T \alpha_{Ts}\,V_s$ with values $V_s = V x_s$ and
+weights $\alpha_{Ts}$. Then $\partial h_T / \partial V_s = \alpha_{Ts}\,I_d$
+and $\partial L / \partial V_s = \alpha_{Ts}\,\partial L/\partial h_T$.
+This is a \emph{single} linear step, independent of $T - s$, so no
+quantity is exponentiated in $T - s$. Each past token also has its own
+addressable slot, so the bottleneck of Theorem~\ref{thm:bottleneck} is
+replaced by an $O(Td)$-sized cache. The full derivation appears in
+Chapter~21.
+\end{proposition}
+
+\subsection*{Code sketch}
+
+The accompanying notebook (\texttt{cells.json}) implements an RNN cell
+with $d = 8$, $T = 50$, and seed $0$. It empirically measures
+$\|\partial L / \partial h_t\|$ for spectral norms
+$\sigma_{\max}(W) \in \{0.5, 0.95, 1.0, 1.05, 1.5\}$ and plots
+log-norm versus $T - t$, recovering the linear (in log) decay/growth of
+Theorem~\ref{thm:vanish}. It then verifies
+$\sigma_{\max}(W^{T-t}) = \sigma_{\max}(W)^{T-t}$ (for normal $W$) via
+both SVD and power iteration, and shows that a one-shot attention
+average has gradient norm \emph{independent} of position.
+
+\subsection*{Connection to LLMs}
+
+The vanishing-gradient theorem is the historical reason transformer-based
+LLMs displaced RNNs. Bahdanau, Cho, and Bengio (2015) added attention
+to a seq2seq RNN to fix translation of long sentences; Vaswani et al.\
+(2017, ``Attention Is All You Need'') removed recurrence entirely.
+Without an $O(1)$ gradient path, scaling to $10^4$--$10^6$-token
+contexts is hopeless: a $\sigma_{\max} = 0.99$ RNN attenuates by
+$e^{-100}$ over $10{,}000$ steps. We formalize attention in Chapter~21,
+generalize to multi-head in Chapter~22, embed in the Transformer block
+in Chapter~23, and scale in Chapter~24.

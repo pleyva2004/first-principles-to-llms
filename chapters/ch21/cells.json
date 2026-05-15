@@ -1,0 +1,208 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# Scaled dot-product attention\n",
+      "\n",
+      "Given $X \\in \\mathbb{R}^{T \\times d_{\\text{model}}}$ and learned projections $W_Q, W_K \\in \\mathbb{R}^{d_{\\text{model}} \\times d_k}$, $W_V \\in \\mathbb{R}^{d_{\\text{model}} \\times d_v}$, set $Q = X W_Q$, $K = X W_K$, $V = X W_V$ and define\n",
+      "$$\\mathrm{Attn}(Q,K,V) = \\mathrm{softmax}\\!\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right) V.$$\n",
+      "Each row of the attention weight matrix is a probability distribution; the output is a convex combination of the value rows."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def softmax(x, axis=-1):\n",
+      "    x = x - np.max(x, axis=axis, keepdims=True)\n",
+      "    e = np.exp(x)\n",
+      "    return e / np.sum(e, axis=axis, keepdims=True)\n",
+      "\n",
+      "def attention(Q, K, V):\n",
+      "    d_k = Q.shape[-1]\n",
+      "    logits = (Q @ K.T) / np.sqrt(d_k)\n",
+      "    A = softmax(logits, axis=-1)\n",
+      "    return A @ V, A\n",
+      "\n",
+      "T, d_model, d_k, d_v = 6, 8, 4, 4\n",
+      "X = np.random.randn(T, d_model)\n",
+      "W_Q = np.random.randn(d_model, d_k) / np.sqrt(d_model)\n",
+      "W_K = np.random.randn(d_model, d_k) / np.sqrt(d_model)\n",
+      "W_V = np.random.randn(d_model, d_v) / np.sqrt(d_model)\n",
+      "\n",
+      "Q, K, V = X @ W_Q, X @ W_K, X @ W_V\n",
+      "out, A = attention(Q, K, V)\n",
+      "print('Attention matrix A (T x T):')\n",
+      "print(np.round(A, 3))\n",
+      "print('Row sums (should all be 1):', np.round(A.sum(axis=1), 6))\n",
+      "print('Output shape:', out.shape)"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## The $\\sqrt{d_k}$ scaling: variance derivation\n",
+      "\n",
+      "If $Q, K \\in \\mathbb{R}^{d_k}$ have i.i.d. zero-mean unit-variance entries, then $S = Q \\cdot K = \\sum_{k=1}^{d_k} Q_k K_k$ has\n",
+      "$$\\mathbb{E}[S] = 0, \\qquad \\mathrm{Var}(S) = \\sum_{k} \\mathbb{E}[Q_k^2 K_k^2] = d_k.$$\n",
+      "Dividing by $\\sqrt{d_k}$ rescales to unit variance, keeping softmax in the non-saturating regime."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "N = 1000\n",
+      "for d_k in [4, 16, 64, 256]:\n",
+      "    Q = np.random.randn(N, d_k)\n",
+      "    K = np.random.randn(N, d_k)\n",
+      "    dots = np.sum(Q * K, axis=1)\n",
+      "    print(f'd_k = {d_k:4d}  empirical Var(Q.K) = {dots.var():7.3f}  (theory: {d_k})')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Saturation without scaling\n",
+      "\n",
+      "If logits have stddev $\\sqrt{d_k}$ and we feed them to softmax without the $1/\\sqrt{d_k}$ correction, the largest logit dominates. The output distribution collapses to a one-hot, its entropy approaches 0, and the softmax Jacobian vanishes."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def softmax(x):\n",
+      "    x = x - np.max(x)\n",
+      "    e = np.exp(x)\n",
+      "    return e / e.sum()\n",
+      "\n",
+      "def entropy(p, eps=1e-12):\n",
+      "    return -float(np.sum(p * np.log(p + eps)))\n",
+      "\n",
+      "T, d_k = 64, 256\n",
+      "logits = np.random.randn(T) * np.sqrt(d_k)\n",
+      "p_unscaled = softmax(logits)\n",
+      "p_scaled = softmax(logits / np.sqrt(d_k))\n",
+      "print(f'max logit          = {logits.max():.3f}')\n",
+      "print(f'entropy unscaled   = {entropy(p_unscaled):.4f}  (max possible = log T = {np.log(T):.4f})')\n",
+      "print(f'entropy scaled     = {entropy(p_scaled):.4f}')\n",
+      "print(f'max prob unscaled  = {p_unscaled.max():.4f}  (saturated -> ~1)')\n",
+      "print(f'max prob scaled    = {p_scaled.max():.4f}  (well-spread)')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Permutation equivariance\n",
+      "\n",
+      "If we permute the sequence axis of $X$ (and hence of $Q, K, V$), the attention output is permuted by the same permutation. Equivalently, attention is invariant under reorderings of input tokens, which is why positional encodings (Ch. 24) are required."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def softmax(x, axis=-1):\n",
+      "    x = x - np.max(x, axis=axis, keepdims=True)\n",
+      "    e = np.exp(x)\n",
+      "    return e / np.sum(e, axis=axis, keepdims=True)\n",
+      "\n",
+      "def attention(Q, K, V):\n",
+      "    d_k = Q.shape[-1]\n",
+      "    A = softmax((Q @ K.T) / np.sqrt(d_k), axis=-1)\n",
+      "    return A @ V\n",
+      "\n",
+      "T, d_model, d_k, d_v = 6, 8, 4, 4\n",
+      "X = np.random.randn(T, d_model)\n",
+      "W_Q = np.random.randn(d_model, d_k) / np.sqrt(d_model)\n",
+      "W_K = np.random.randn(d_model, d_k) / np.sqrt(d_model)\n",
+      "W_V = np.random.randn(d_model, d_v) / np.sqrt(d_model)\n",
+      "\n",
+      "Q, K, V = X @ W_Q, X @ W_K, X @ W_V\n",
+      "out = attention(Q, K, V)\n",
+      "\n",
+      "perm = np.random.permutation(T)\n",
+      "Xp = X[perm]\n",
+      "Qp, Kp, Vp = Xp @ W_Q, Xp @ W_K, Xp @ W_V\n",
+      "out_perm = attention(Qp, Kp, Vp)\n",
+      "\n",
+      "# out_perm should equal out[perm]\n",
+      "diff = np.max(np.abs(out_perm - out[perm]))\n",
+      "print('Permutation:', perm)\n",
+      "print(f'max |Attn(P X) - P Attn(X)| = {diff:.2e}  (should be ~1e-15)')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Gradient flow: attention vs. RNN\n",
+      "\n",
+      "We compare $\\|\\partial L / \\partial X_0\\|$ when $L$ depends only on the last position $X_{T-1}$, for $T = 50$.\n",
+      "\n",
+      "- **RNN** with weight matrix of spectral norm $0.9$: by Ch. 20, $\\|\\partial h_{T-1}/\\partial h_0\\| \\lesssim 0.9^{49} \\approx 5.7 \\times 10^{-3}$.\n",
+      "- **Attention**: by Theorem 5, the gradient passes through one matmul with weight $A_{T-1, 0} \\sim 1/T$, i.e. $O(1/T)$ — orders of magnitude larger."
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def softmax(x, axis=-1):\n",
+      "    x = x - np.max(x, axis=axis, keepdims=True)\n",
+      "    e = np.exp(x)\n",
+      "    return e / np.sum(e, axis=axis, keepdims=True)\n",
+      "\n",
+      "T, d = 50, 8\n",
+      "X = np.random.randn(T, d)\n",
+      "\n",
+      "# --- Attention path: identity Q, K, V (just X). Gradient of out[T-1] w.r.t. X[0]\n",
+      "# is A[T-1, 0] * I_d (Theorem 5), so the gradient norm is sqrt(d) * A[T-1, 0].\n",
+      "Q = K = V = X\n",
+      "A = softmax((Q @ K.T) / np.sqrt(d), axis=-1)\n",
+      "g_attn = A[T - 1, 0] * np.sqrt(d)\n",
+      "print(f'Attention   |dL/dX_0| ~ A[T-1,0] * sqrt(d) = {g_attn:.4e}')\n",
+      "\n",
+      "# --- RNN path: h_t = W h_{t-1} with spectral norm 0.9, identity nonlinearity\n",
+      "# (best case for the RNN). Gradient norm = ||W^{T-1}|| <= 0.9^{T-1}.\n",
+      "rho = 0.9\n",
+      "W = np.random.randn(d, d)\n",
+      "U, S, Vt = np.linalg.svd(W)\n",
+      "W = U @ np.diag(np.full(d, rho)) @ Vt   # exact spectral norm rho\n",
+      "Wpow = np.linalg.matrix_power(W, T - 1)\n",
+      "g_rnn = np.linalg.norm(Wpow, 2)\n",
+      "print(f'RNN(rho=0.9) |dh_{{T-1}}/dh_0|       = {g_rnn:.4e}')\n",
+      "print(f'ratio attention / RNN = {g_attn / g_rnn:.2e}')"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

@@ -1,0 +1,198 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "# RNNs, vanishing gradients, and why we need attention\n",
+      "\n",
+      "We implement the RNN cell\n",
+      "\n",
+      "$$h_t = \\sigma(W_h h_{t-1} + W_x x_t + b)$$\n",
+      "\n",
+      "and show empirically that the gradient at an early position $t$ from a loss at the final position $T$ scales like $\\sigma_{\\max}(W_h)^{T-t}$. We then show that an attention-style average has $O(1)$ gradient flow.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "d = 8\n",
+      "T = 50\n",
+      "input_dim = 4\n",
+      "\n",
+      "Wh = 0.95 * np.random.randn(d, d) / np.sqrt(d)\n",
+      "Wx = np.random.randn(d, input_dim) / np.sqrt(input_dim)\n",
+      "b = np.zeros(d)\n",
+      "\n",
+      "def rnn_forward(xs, Wh, Wx, b, sigma=np.tanh):\n",
+      "    T = len(xs)\n",
+      "    d = Wh.shape[0]\n",
+      "    h = np.zeros(d)\n",
+      "    hs = [h]\n",
+      "    for t in range(T):\n",
+      "        h = sigma(Wh @ h + Wx @ xs[t] + b)\n",
+      "        hs.append(h)\n",
+      "    return hs\n",
+      "\n",
+      "xs = np.random.randn(T, input_dim)\n",
+      "hs = rnn_forward(xs, Wh, Wx, b)\n",
+      "print('h_1 =', np.round(hs[1], 3))\n",
+      "print('h_T =', np.round(hs[T], 3))\n",
+      "\n",
+      "# Show h_T depends on x_1: perturb x_1 and recompute.\n",
+      "xs2 = xs.copy(); xs2[0] += 1e-3\n",
+      "hs2 = rnn_forward(xs2, Wh, Wx, b)\n",
+      "print('||h_T - h_T_perturbed|| =', np.linalg.norm(hs[T] - hs2[T]))\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Vanishing/exploding gradients\n",
+      "\n",
+      "We measure $\\|\\partial L / \\partial h_t\\|$ for a loss $L = \\tfrac{1}{2} \\|h_T\\|^2$ in the *linearized* RNN $h_t = W h_{t-1}$. By Theorem 1, $\\partial L / \\partial h_t = (W^\\top)^{T-t} h_T$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "d = 8\n",
+      "T = 50\n",
+      "\n",
+      "def make_W(spec_norm, d, seed=0):\n",
+      "    rng = np.random.default_rng(seed)\n",
+      "    A = rng.standard_normal((d, d))\n",
+      "    U, S, Vt = np.linalg.svd(A)\n",
+      "    # Reset top singular value to spec_norm, decay others\n",
+      "    S = spec_norm * np.linspace(1.0, 0.5, d)\n",
+      "    return U @ np.diag(S) @ Vt\n",
+      "\n",
+      "def grad_norms(W, T):\n",
+      "    h = np.random.randn(W.shape[0])\n",
+      "    # Forward (linear): h_t = W^t h_0\n",
+      "    hs = [h]\n",
+      "    for _ in range(T):\n",
+      "        hs.append(W @ hs[-1])\n",
+      "    g = hs[-1].copy()  # dL/dh_T = h_T for L = 0.5 ||h_T||^2\n",
+      "    norms = [np.linalg.norm(g)]\n",
+      "    for _ in range(T):\n",
+      "        g = W.T @ g\n",
+      "        norms.append(np.linalg.norm(g))\n",
+      "    # norms[k] = ||dL/dh_{T-k}||\n",
+      "    return norms\n",
+      "\n",
+      "results = {}\n",
+      "for s in [0.5, 0.95, 1.0, 1.05, 1.5]:\n",
+      "    W = make_W(s, d)\n",
+      "    results[s] = grad_norms(W, T)\n",
+      "    print(f'spec_norm={s}: ||grad@t=0|| / ||grad@t=T|| = {results[s][-1]/results[s][0]:.3e}')\n",
+      "\n",
+      "try:\n",
+      "    import matplotlib.pyplot as plt\n",
+      "    for s, ns in results.items():\n",
+      "        plt.semilogy(range(T+1), ns, label=f'$\\\\sigma_{{max}}={s}$')\n",
+      "    plt.xlabel('T - t')\n",
+      "    plt.ylabel('$\\\\|\\\\partial L/\\\\partial h_t\\\\|$')\n",
+      "    plt.legend(); plt.title('Vanishing/exploding gradients')\n",
+      "    plt.tight_layout(); plt.show()\n",
+      "except Exception as e:\n",
+      "    print('matplotlib unavailable:', e)\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Theorem statement (verification)\n",
+      "\n",
+      "We verify $\\sigma_{\\max}(W^k) = \\sigma_{\\max}(W)^k$ for a small symmetric (normal) $W$ via two methods: explicit SVD of $W^k$ and power iteration.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "d = 5\n",
+      "A = np.random.randn(d, d)\n",
+      "W = (A + A.T) / 2  # symmetric => normal\n",
+      "W = 0.9 * W / np.linalg.norm(W, 2)  # spec_norm = 0.9\n",
+      "spec = np.linalg.norm(W, 2)\n",
+      "print(f'sigma_max(W) = {spec:.6f}')\n",
+      "\n",
+      "for k in [1, 5, 10, 20]:\n",
+      "    Wk = np.linalg.matrix_power(W, k)\n",
+      "    svd_top = np.linalg.svd(Wk, compute_uv=False)[0]\n",
+      "    # Power iteration\n",
+      "    v = np.random.randn(d)\n",
+      "    for _ in range(200):\n",
+      "        v = Wk.T @ (Wk @ v)\n",
+      "        v /= np.linalg.norm(v)\n",
+      "    pi_top = np.linalg.norm(Wk @ v)\n",
+      "    print(f'k={k:2d}: SVD={svd_top:.6e}  power_iter={pi_top:.6e}  predicted={spec**k:.6e}')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Attention's escape\n",
+      "\n",
+      "Now build $h_T = \\sum_s \\alpha_{Ts} V_s$ with hand-set weights $\\alpha$. The gradient $\\partial L/\\partial V_s = \\alpha_{Ts}\\,\\partial L/\\partial h_T$ is one matrix-vector product, independent of $T - s$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "T = 50\n",
+      "d = 8\n",
+      "Vs = np.random.randn(T, d)             # value vectors V_s\n",
+      "alpha = np.ones(T) / T                  # uniform attention weights\n",
+      "h_T = (alpha[:, None] * Vs).sum(axis=0) # = sum_s alpha_s V_s\n",
+      "\n",
+      "# L = 0.5 ||h_T||^2  =>  dL/dh_T = h_T\n",
+      "grad_hT = h_T.copy()\n",
+      "\n",
+      "# Gradients at every position s: dL/dV_s = alpha_s * h_T\n",
+      "grads = alpha[:, None] * grad_hT[None, :]\n",
+      "norms = np.linalg.norm(grads, axis=1)\n",
+      "\n",
+      "print('||dL/dV_1||  =', norms[0])\n",
+      "print('||dL/dV_25|| =', norms[25])\n",
+      "print('||dL/dV_50|| =', norms[-1])\n",
+      "print('ratio max/min =', norms.max() / norms.min())\n",
+      "print('=> independent of T - s (no exponential decay).')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Takeaway\n",
+      "\n",
+      "RNNs propagate gradients through $T - t$ multiplications by $W^\\top$, exponentiating $\\sigma_{\\max}(W)$. Attention replaces this product with a single weighted sum: $O(1)$ gradient distance between any two positions. This is why every modern LLM (GPT, Claude, Gemini, Llama) is built on attention, not recurrence. We formalize attention in Chapter 21.\n"
+    ]
+  }
+]

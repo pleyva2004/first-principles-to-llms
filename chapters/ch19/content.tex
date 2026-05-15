@@ -1,0 +1,93 @@
+\subsection*{Motivation}
+
+A transformer language model never sees the symbol \emph{cat}. It sees an integer index $v\in\{0,1,\dots,V-1\}$ which is then mapped to a vector in $\mathbb{R}^d$. That vector is the only representation downstream layers ever touch: attention, MLPs, normalizations, residuals --- everything is linear algebra on $\mathbb{R}^d$. The gateway between the discrete vocabulary $\mathcal{V}$ (Chapter~1) and the continuous geometry of $\mathbb{R}^d$ is the \emph{embedding matrix}. We will show that this gateway is not a fancy table lookup at all: it is the linear map of Chapter~5 applied to a one-hot vector. The trick of \emph{weight tying} --- sharing parameters between the input embedding and the output projection --- then falls out as a natural identification.
+
+\subsection*{Definitions}
+
+\begin{definition}[One-hot encoding]
+For a finite vocabulary $\mathcal{V}=\{0,1,\dots,V-1\}$ and $v\in\mathcal{V}$, the \emph{one-hot vector} is $e_v\in\{0,1\}^V$ with $e_v[i]=\mathbf{1}_{i=v}$. Equivalently, $e_v$ is the $v$-th standard basis vector of $\mathbb{R}^V$.
+\end{definition}
+
+\begin{definition}[Embedding matrix and lookup]
+An \emph{embedding matrix} is a parameter $E\in\mathbb{R}^{d\times V}$. Its columns $\{E_{:,0},\dots,E_{:,V-1}\}$ are the \emph{token embeddings}; the integer $d$ is the \emph{embedding dimension} (also written $d_{\mathrm{model}}$). The \emph{embedding lookup} is $\mathrm{emb}\colon\mathcal{V}\to\mathbb{R}^d$, $\mathrm{emb}(v):=E e_v$.
+\end{definition}
+
+\begin{definition}[Output projection / unembedding]
+An \emph{output projection} is a parameter $U\in\mathbb{R}^{V\times d}$ taking a hidden state $h\in\mathbb{R}^d$ to a logit vector $z:=Uh\in\mathbb{R}^V$. The probability over $\mathcal{V}$ is $\hat p=\mathrm{softmax}(z)$ (Chapter~9, 17).
+\end{definition}
+
+\begin{definition}[Weight tying]
+A model with embedding $E\in\mathbb{R}^{d\times V}$ and output projection $U\in\mathbb{R}^{V\times d}$ is \emph{weight-tied} (Press \& Wolf 2016; Inan et al.\ 2017) if $U=E^\top$. The two layers then share the same $dV$ scalar parameters.
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[Lookup is a linear map]\label{thm:lookup}
+For every $v\in\{0,\dots,V-1\}$, $E e_v = E_{:,v}$.
+\end{theorem}
+
+\begin{proof}
+By the definition of matrix--vector multiplication (Chapter~5),
+\[
+(E e_v)_i \;=\; \sum_{j=0}^{V-1} E_{ij}\,(e_v)_j \;=\; \sum_{j=0}^{V-1} E_{ij}\,\mathbf{1}_{j=v} \;=\; E_{iv}
+\]
+for every $i\in\{0,\dots,d-1\}$. Stacking these scalars gives the column $E_{:,v}$, so $Ee_v=E_{:,v}$.
+\end{proof}
+
+\begin{remark}
+Embedding-table lookup is therefore a linear map $\mathbb{R}^V\to\mathbb{R}^d$ in disguise. Implementations skip the matmul and slice the column; the \emph{meaning} is the matrix product.
+\end{remark}
+
+\begin{theorem}[Weight-tying gradient identity]\label{thm:tied}
+Let $E\in\mathbb{R}^{d\times V}$ and consider a model
+\[
+f(v,E) \;=\; U\,h(E e_v) \;=\; E^\top h(E e_v),
+\]
+with tied $U=E^\top$, where $h\colon\mathbb{R}^d\to\mathbb{R}^d$ is a sub-network with no further dependence on $E$. Let $\mathcal{L}$ be a scalar loss applied to $z=E^\top h$. Then
+\[
+\nabla_E\mathcal{L} \;=\; \underbrace{h\,(\nabla_z\mathcal{L})^\top}_{\text{output-side}} \;+\; \underbrace{\big(J_h^\top E\,\nabla_z\mathcal{L}\big)\,e_v^\top}_{\text{input-side}},
+\]
+where $J_h\in\mathbb{R}^{d\times d}$ is the Jacobian of $h$ at $E e_v$. The input-side contribution is rank-one; only column $v$ is nonzero.
+\end{theorem}
+
+\begin{proof}
+Treat $E$ as occurring in two roles: an output role $U=E^\top$ and an input role inside $h\circ(E\cdot e_v)$. By the multivariate chain rule (Chapter~18), the total gradient is the sum of the partial gradients with respect to each role.
+
+\emph{Output role.} $z_k=\sum_i E_{ik}h_i$, so $\partial z_k/\partial E_{ij}=\mathbf{1}_{k=j}h_i$. Hence
+\[
+\Big.\frac{\partial\mathcal{L}}{\partial E_{ij}}\Big|_{\text{out}} \;=\; \sum_k \frac{\partial\mathcal{L}}{\partial z_k}\frac{\partial z_k}{\partial E_{ij}} \;=\; h_i\,\frac{\partial\mathcal{L}}{\partial z_j},
+\]
+giving the outer product $h\,(\nabla_z\mathcal{L})^\top\in\mathbb{R}^{d\times V}$.
+
+\emph{Input role.} $x:=E e_v$ has $x_i=E_{iv}$, so $\partial x_i/\partial E_{ab}=\mathbf{1}_{a=i}\mathbf{1}_{b=v}$. By the chain rule,
+\[
+\Big.\frac{\partial\mathcal{L}}{\partial E_{ab}}\Big|_{\text{in}} \;=\; \sum_i \frac{\partial\mathcal{L}}{\partial x_i}\frac{\partial x_i}{\partial E_{ab}} \;=\; \frac{\partial\mathcal{L}}{\partial x_a}\,\mathbf{1}_{b=v}.
+\]
+Now $\nabla_x\mathcal{L} = J_h^\top\nabla_h\mathcal{L} = J_h^\top(E\,\nabla_z\mathcal{L})$, since $\nabla_h\mathcal{L}=U^\top\nabla_z\mathcal{L}=E\,\nabla_z\mathcal{L}$. Hence the input-side contribution is the rank-one matrix $g\,e_v^\top$ with $g:=J_h^\top E\,\nabla_z\mathcal{L}\in\mathbb{R}^d$, whose only nonzero column sits in position $v$. Summing the two roles yields the claim.
+\end{proof}
+
+\begin{remark}[Sparsity of the input gradient]
+The factor $e_v^\top$ kills every column except column $v$. This is why embedding tables are usually updated with \emph{sparse} gradients: each minibatch only touches the columns of the tokens it actually contains. The output-side term, by contrast, hits all $V$ columns through $h(\nabla_z\mathcal{L})^\top$.
+\end{remark}
+
+\begin{remark}[Distributional semantics, Mikolov et al.\ 2013]
+During training, two tokens $u,v$ that appear in similar surrounding contexts produce similar gradients on their embeddings (the context enters via $\nabla_z\mathcal{L}$ and via $h$). Iterating SGD, $E_{:,u}$ and $E_{:,v}$ drift toward similar locations in $\mathbb{R}^d$, so cosine similarity of embeddings tracks distributional similarity in the corpus. This is an empirical claim, not a theorem; we illustrate it numerically in the code cells.
+\end{remark}
+
+\begin{theorem}[Dimensionality bound]\label{thm:dim}
+If $V>d$, no choice of $E\in\mathbb{R}^{d\times V}$ makes the columns $E_{:,0},\dots,E_{:,V-1}$ pairwise orthogonal and nonzero.
+\end{theorem}
+
+\begin{proof}
+Pairwise orthogonal nonzero vectors in any inner-product space are linearly independent: from $\sum_v c_v E_{:,v}=0$, take the inner product with $E_{:,u}$ to get $c_u\|E_{:,u}\|^2=0$, hence $c_u=0$. The columns would then be a linearly independent set of size $V$ in $\mathbb{R}^d$. By Chapter~5 (invariance of dimension), every independent set in $\mathbb{R}^d$ has size $\le d$, so $V\le d$, contradicting $V>d$.
+\end{proof}
+
+In LLMs we always have $V\gg d$ (e.g.\ $V\approx 5\cdot 10^4$ versus $d\approx 4096$), so embeddings cannot be mutually orthogonal --- they form an \emph{overcomplete} set, and ``near-orthogonality'' is the best one can ask.
+
+\subsection*{Code sketch}
+
+We build a tiny embedding matrix and verify $E e_v=E_{:,v}$ exactly. We then construct tied $U=E^\top$ and check that the logit for token $v$ equals $\langle E_{:,v},h\rangle$. A Mikolov-style skip-gram on a synthetic corpus shows that embeddings of co-occurring tokens develop higher cosine similarity than non-co-occurring ones. Finally, we verify Theorem~\ref{thm:dim} by attempting to orthogonalize $V=8$ vectors in $\mathbb{R}^3$ via Gram--Schmidt and observing dimension exhaustion.
+
+\subsection*{Connection to LLMs}
+
+Every transformer language model contains exactly the data structures of this chapter: an input embedding $E\in\mathbb{R}^{d\times V}$ and an output projection $U\in\mathbb{R}^{V\times d}$. The embedding dimension $d$ is the \emph{model dimension} $d_{\mathrm{model}}$, which dominates parameter counts and FLOPs (Chapters~23--25). GPT-2 (Radford et al.\ 2019), Llama 1/2/3 (Touvron et al.\ 2023), and most open-weight LMs use weight tying $U=E^\top$, halving embedding parameters and empirically improving perplexity. GPT-3/4 use an LM-head initialized from $E^\top$ but trained separately. Once a token is embedded, position information is added (Chapter~20), and the residual stream begins (Chapter~22). The final logit projection $Uh_{\text{final}}$ is the same matrix $E$ that began the forward pass, viewed from a different side.

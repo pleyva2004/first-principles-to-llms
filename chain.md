@@ -1095,30 +1095,356 @@ AdamW is the universal pre-training optimizer for transformers (GPT-2/3/4 family
 # Block D — Neural Networks
 
 <!-- CHAPTER 15 START -->
+<a id="chapter-15-mlps-as-compositional-functions-universal-approximation"></a>
 ## Chapter 15: MLPs as compositional functions; universal approximation
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+A linear map $x \mapsto Wx + b$ (Chapter 5) can only carve $\mathbb{R}^n$ into half-spaces and stretch them affinely. The continuous functions on a compact set $K \subset \mathbb{R}^n$ (Chapter 4) form a vastly richer space. To bridge the gap we interleave linear maps with a fixed pointwise nonlinearity. The resulting object — a *multilayer perceptron* (MLP) — turns out to be expressive enough to approximate **every** continuous function uniformly on $K$. This is the engine inside every transformer's feed-forward block.
+
+## Definitions
+
+**Definition (MLP).** Let $L \geq 1$ and widths $d_0, d_1, \dots, d_L \in \mathbb{N}$. A *multilayer perceptron of depth $L$* with activation $\sigma : \mathbb{R} \to \mathbb{R}$ (applied componentwise) is the function $f : \mathbb{R}^{d_0} \to \mathbb{R}^{d_L}$ defined by
+$$
+h^{(0)} = x, \qquad h^{(\ell)} = \sigma\!\big(W^{(\ell)} h^{(\ell-1)} + b^{(\ell)}\big) \text{ for } 1 \leq \ell \leq L-1,
+$$
+$$
+f(x) = W^{(L)} h^{(L-1)} + b^{(L)},
+$$
+with $W^{(\ell)} \in \mathbb{R}^{d_\ell \times d_{\ell-1}}$ and $b^{(\ell)} \in \mathbb{R}^{d_\ell}$. The number $\max_\ell d_\ell$ is the *width*; $L$ is the *depth*.
+
+**Definition (universal approximator).** A class $\mathcal{F} \subset C(K, \mathbb{R})$ is **dense** in $C(K)$ — i.e. a *universal approximator* — if for every $f \in C(K)$ and $\varepsilon > 0$ there exists $g \in \mathcal{F}$ with $\sup_{x \in K} |f(x) - g(x)| < \varepsilon$.
+
+**Definition (sigmoidal / discriminatory).** A measurable $\sigma : \mathbb{R} \to \mathbb{R}$ is *sigmoidal* if $\sigma(t) \to 1$ as $t \to +\infty$ and $\sigma(t) \to 0$ as $t \to -\infty$. It is *discriminatory* if for every signed regular Borel measure $\mu$ on $K = [0,1]^n$,
+$$
+\int_K \sigma(w^\top x + b)\, d\mu(x) = 0 \text{ for all } w \in \mathbb{R}^n,\ b \in \mathbb{R} \;\Longrightarrow\; \mu = 0.
+$$
+
+## Theorems
+
+### 1. Universal Approximation (Cybenko, 1989; Hornik, 1989)
+
+**Theorem.** Let $\sigma$ be a continuous sigmoidal function and $K \subset \mathbb{R}^n$ compact. The class
+$$
+\mathcal{F}_\sigma = \Big\{ g(x) = \sum_{j=1}^{N} \alpha_j\, \sigma(w_j^\top x + b_j) \;\Big|\; N \in \mathbb{N},\ \alpha_j, b_j \in \mathbb{R},\ w_j \in \mathbb{R}^n \Big\}
+$$
+of single-hidden-layer MLPs is dense in $C(K)$.
+
+*Proof sketch (Hahn–Banach + Riesz).* Suppose, for contradiction, $\mathcal{F}_\sigma$ is **not** dense. Then $S := \overline{\mathcal{F}_\sigma}$ is a proper closed subspace of the Banach space $C(K)$. Pick any $f_0 \in C(K) \setminus S$. By the **Hahn–Banach theorem** there exists a continuous linear functional $\Lambda \in C(K)^*$ with $\Lambda \not\equiv 0$ but $\Lambda|_S = 0$.
+
+By the **Riesz representation theorem**, $\Lambda$ is given by integration against a finite signed regular Borel measure $\mu$ on $K$:
+$$
+\Lambda(g) = \int_K g(x)\, d\mu(x), \qquad g \in C(K).
+$$
+Since each ridge function $x \mapsto \sigma(w^\top x + b) \in \mathcal{F}_\sigma \subset S$,
+$$
+\int_K \sigma(w^\top x + b)\, d\mu(x) = 0 \quad \forall\, w, b.
+$$
+Cybenko shows any continuous sigmoidal $\sigma$ is **discriminatory** (proven via Fourier analysis: pushing $\sigma$ toward step functions and reading off vanishing characteristic functions of half-spaces forces $\mu \equiv 0$). Hence $\mu = 0$, so $\Lambda \equiv 0$, contradiction. $\square$
+
+### 2. Linear-only networks collapse
+
+**Proposition.** If $\sigma = \mathrm{id}$, then any depth-$L$ MLP is itself a single affine map.
+
+*Proof.* By induction on $\ell$, $h^{(\ell)} = W^{(\ell)} h^{(\ell-1)} + b^{(\ell)}$. Unrolling,
+$$
+f(x) = W' x + b', \quad W' = \prod_{\ell=L}^{1} W^{(\ell)}, \quad b' = \sum_{\ell=1}^{L} \Big(\prod_{k=L}^{\ell+1} W^{(k)}\Big) b^{(\ell)}.
+$$
+Therefore $f$ is affine, regardless of $L$. Affine maps are not dense in $C(K)$ (e.g. cannot approximate $\sin$ on $[-1,1]$ to error $< 0.1$). $\square$
+
+So the nonlinearity $\sigma$ is not cosmetic: without it, depth buys nothing.
+
+### 3. Depth separation (Telgarsky, 2016)
+
+**Theorem (informal).** For every $k \geq 1$ there is a function $f_k : [0,1] \to [0,1]$ realizable exactly by a ReLU network of depth $O(k^3)$ and width $O(1)$, such that **any** ReLU network of depth $\leq k$ approximating $f_k$ in $L^1$ to error $< 1/32$ requires width $\geq 2^k$.
+
+*Sketch.* Take $f_k$ to be the $k$-fold composition $\Delta^{\circ k}$ of the triangular "sawtooth" $\Delta(x) = 2x$ on $[0, 1/2]$, $\Delta(x) = 2(1-x)$ on $[1/2, 1]$. Each composition doubles the number of monotone pieces, so $f_k$ has $2^k$ pieces. A shallow ReLU net of depth $\leq k$ realizes a piecewise linear function with at most $\mathrm{poly}(\text{width})^k$ pieces; matching $2^k$ pieces forces exponential width. Composition realizes the same function with width and depth growing linearly in $k$. $\square$
+
+The moral: UAT says shallow nets *can* approximate everything, but composition (depth) is **exponentially more parameter-efficient** for naturally hierarchical targets.
+
+## Code sketch
+
+The companion `cells.json` notebook (i) hand-builds a numpy MLP with $\tanh$ activation, (ii) fits a 32-unit MLP to $\sin(2\pi x)$ on $[-1,1]$ via least-squares on hidden features and verifies $\|f - \hat f\|_\infty < 0.05$, (iii) compares width-32-depth-1 against width-8-depth-3 at fixed parameter budget and observes lower error from the deeper net, and (iv) numerically confirms the linear-only collapse $f(x) = W' x + b'$.
+
+## Connection to LLMs
+
+Every transformer block contains a position-wise feed-forward module
+$$
+\mathrm{FFN}(x) = W_2\, \sigma(W_1 x + b_1) + b_2,
+$$
+i.e. a **single-hidden-layer MLP** applied independently to each token. This is exactly the universal approximator from Theorem 1: attention shuffles information *across* positions, while the FFN performs nonlinear pointwise computation that — by Cybenko — can in principle realize any continuous transformation of the embedding. Modern LLMs make $W_1$ wide ($4d$ or $8d$ inner dim) precisely to exploit Theorem 1's expressive guarantee, while stacking $L$ such blocks exploits Theorem 3's exponential depth gain. We will assemble the full block in Chapter 23.
 
 <!-- CHAPTER 15 END -->
 
 <!-- CHAPTER 16 START -->
+<a id="chapter-16-activation-functions-relugelusoftmax-with-derivatives"></a>
 ## Chapter 16: Activation functions: ReLU/GELU/softmax with derivatives
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+A multi-layer perceptron (Chapter 15) without a nonlinear activation collapses into a single affine map: $W_2(W_1 x + b_1) + b_2 = (W_2 W_1) x + (W_2 b_1 + b_2)$. Universal approximation requires injecting a *pointwise* nonlinearity $\phi$ between affine layers. The choice of $\phi$ controls (i) the gradient signal that backpropagation (Chapter 3) is allowed to push through the network, (ii) the representational geometry of hidden activations, and (iii) numerical conditioning of the loss. This chapter derives the five activations that dominate modern deep learning: sigmoid, tanh, ReLU, GELU, and softmax. For each we compute the derivative or Jacobian from first principles, analyze saturation, and connect to the LLM stack (Chapters 21, 25).
+
+## Definitions
+
+**Sigmoid.** $\sigma:\mathbb{R}\to(0,1)$, $\sigma(x) = \frac{1}{1+e^{-x}}$.
+
+**Hyperbolic tangent.** $\tanh:\mathbb{R}\to(-1,1)$, $\tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}} = 2\sigma(2x) - 1$.
+
+**ReLU.** $\mathrm{ReLU}(x) = \max(0, x)$. Differentiable everywhere except $x=0$; the *Clarke subdifferential* at $0$ is $[0,1]$.
+
+**GELU.** $\mathrm{GELU}(x) = x \Phi(x)$, where $\Phi(x) = \tfrac{1}{2}\bigl(1 + \mathrm{erf}(x/\sqrt 2)\bigr)$ is the standard-normal CDF. The Hendrycks–Gimpel tanh-approximation reads
+$$\mathrm{GELU}(x) \approx \tfrac{1}{2}x\bigl(1 + \tanh(\sqrt{2/\pi}\,(x + 0.044715\,x^3))\bigr).$$
+
+**Softmax.** $\mathrm{softmax}:\mathbb{R}^n \to \Delta^{n-1}$, $\mathrm{softmax}(z)_i = \frac{e^{z_i}}{\sum_{k=1}^n e^{z_k}}$, mapping logits to a probability simplex.
+
+## Theorems and Proofs
+
+**Theorem 16.1 (sigmoid derivative).** $\sigma'(x) = \sigma(x)(1-\sigma(x))$.
+
+*Proof.* Write $\sigma(x) = (1+e^{-x})^{-1}$. By the chain rule, $\sigma'(x) = -(1+e^{-x})^{-2} \cdot (-e^{-x}) = \frac{e^{-x}}{(1+e^{-x})^2}$. Factor: $\frac{e^{-x}}{(1+e^{-x})^2} = \frac{1}{1+e^{-x}}\cdot \frac{e^{-x}}{1+e^{-x}} = \sigma(x)\bigl(1 - \sigma(x)\bigr)$, since $\frac{e^{-x}}{1+e^{-x}} = 1 - \sigma(x)$. $\square$
+
+**Theorem 16.2 (tanh derivative).** $\tanh'(x) = 1 - \tanh^2(x)$.
+
+*Proof.* From $\tanh = 2\sigma(2x) - 1$, the chain rule gives $\tanh'(x) = 4\sigma(2x)(1-\sigma(2x))$. Substitute $\sigma(2x) = (\tanh(x)+1)/2$: $4\cdot \tfrac{\tanh(x)+1}{2}\cdot \tfrac{1-\tanh(x)}{2} = (1+\tanh x)(1-\tanh x) = 1 - \tanh^2(x)$. $\square$
+
+**Theorem 16.3 (ReLU derivative).** For $x\neq 0$, $\mathrm{ReLU}'(x) = \mathbf{1}_{x>0}$. At $x=0$, the Clarke subdifferential is $\partial\,\mathrm{ReLU}(0) = [0,1]$.
+
+*Proof.* For $x>0$, $\mathrm{ReLU}(x)=x$ has derivative $1$. For $x<0$, derivative $0$. At $x=0$ the left derivative is $0$ and the right derivative is $1$; the convex hull of these limits, $[0,1]$, defines the subdifferential. Implementations conventionally pick $0$. $\square$
+
+**Theorem 16.4 (GELU derivative).** $\mathrm{GELU}'(x) = \Phi(x) + x\phi(x)$, where $\phi(x)=\tfrac{1}{\sqrt{2\pi}}e^{-x^2/2}$.
+
+*Proof.* Apply the product rule to $x\Phi(x)$: $\frac{d}{dx}[x\Phi(x)] = \Phi(x) + x\Phi'(x)$. By the fundamental theorem of calculus, $\Phi'(x) = \phi(x)$. $\square$
+
+**Theorem 16.5 (softmax Jacobian).** Let $s = \mathrm{softmax}(z)$. Then $\frac{\partial s_i}{\partial z_j} = s_i(\delta_{ij} - s_j)$.
+
+*Proof.* Let $S = \sum_k e^{z_k}$, so $s_i = e^{z_i}/S$. By the quotient rule,
+$$\frac{\partial s_i}{\partial z_j} = \frac{(\partial e^{z_i}/\partial z_j)\,S - e^{z_i}\,(\partial S/\partial z_j)}{S^2} = \frac{\delta_{ij} e^{z_i} S - e^{z_i} e^{z_j}}{S^2} = \delta_{ij} s_i - s_i s_j = s_i(\delta_{ij} - s_j).\ \square$$
+
+In matrix form, $J = \mathrm{diag}(s) - s s^\top$, a rank-$\le n$ symmetric PSD matrix with kernel spanned by $\mathbf{1}$ (consistent with softmax's translation invariance).
+
+**Proposition 16.6 (saturation).** $\sigma'(x), \tanh'(x) \to 0$ as $|x|\to\infty$. Hence in deep MLPs, gradients $\prod_\ell \phi'(z_\ell)$ shrink geometrically — *vanishing gradients*. ReLU avoids saturation on the positive ray but suffers *dead neurons*: if a unit's pre-activation stays $\le 0$ across the whole training set, its gradient is identically zero. GELU is smooth and asymptotes to identity for $x \gg 0$ (since $\Phi(x)\to 1$ and $\phi(x)\to 0$, so $\mathrm{GELU}'(x)\to 1$) and to $0$ for $x\ll 0$ — combining ReLU-like sparsity with smoothness.
+
+**Theorem 16.7 (softmax temperature limits).** Let $T>0$ and assume the maximizer $i^* = \arg\max_i z_i$ is unique. Then
+$$\lim_{T\to 0^+} \mathrm{softmax}(z/T)_i = \mathbf{1}_{i = i^*},\qquad \lim_{T\to\infty} \mathrm{softmax}(z/T)_i = \tfrac{1}{n}.$$
+
+*Proof.* Write $\mathrm{softmax}(z/T)_i = \frac{e^{(z_i - z_{i^*})/T}}{\sum_k e^{(z_k - z_{i^*})/T}}$. As $T\to 0^+$, every term $e^{(z_k - z_{i^*})/T}$ with $k\neq i^*$ tends to $0$ while the $k=i^*$ term equals $1$, giving $\mathbf{1}_{i=i^*}$. As $T\to\infty$, every $e^{(z_k - z_{i^*})/T}\to 1$, so the ratio tends to $1/n$. $\square$
+
+**Proposition 16.8 (numerical stability).** $\mathrm{softmax}(z) = \mathrm{softmax}(z - c\mathbf{1})$ for any $c\in\mathbb{R}$. Choosing $c = \max_i z_i$ ensures every exponent is $\le 0$, so no overflow.
+
+*Proof.* $\frac{e^{z_i - c}}{\sum_k e^{z_k - c}} = \frac{e^{-c} e^{z_i}}{e^{-c}\sum_k e^{z_k}} = \mathrm{softmax}(z)_i$. $\square$
+
+**Corollary 16.9 (log-sum-exp).** $\log\sum_j e^{z_j} = \max_j z_j + \log\sum_j e^{z_j - \max_k z_k}$, also overflow-free.
+
+## Code Sketch
+
+The accompanying notebook (i) plots all five activations on $[-4,4]$ and tabulates them at $x\in\{-2,-1,0,1,2\}$; (ii) verifies analytic derivatives against centered finite differences; (iii) implements `softmax_jacobian(z) = diag(s) - np.outer(s, s)` and matches a numerical Jacobian to machine precision; (iv) sweeps temperature $T\in\{0.1, 1, 5, 100\}$ to visualize the one-hot/uniform limits of Theorem 16.7; (v) demonstrates that naive softmax of $(1000,1001,1002)$ overflows but the stabilized version recovers $(0.0900, 0.2447, 0.6652)$.
+
+## Connection to LLMs
+
+GELU is the default feedforward activation in GPT-2/3, BERT, and pre-Llama Transformers (Llama-family models switched to SwiGLU, a gated variant; see Chapter 17). Wherever Chapter 15's MLP block appears between attention layers, the inner nonlinearity is GELU acting elementwise on a $4d_{\text{model}}$-wide hidden state. Softmax appears in **two** distinct loci of an LLM:
+
+1. **Attention** (Chapter 21): for query $q$ and keys $K$, attention weights are $\mathrm{softmax}(qK^\top/\sqrt{d_k})$ — a row-wise softmax converting compatibility scores into a probability distribution over keys.
+2. **Output head** (Chapter 25): the final logits over the vocabulary are passed through softmax to produce the next-token distribution $p(x_{t+1}\mid x_{\le t})$. Sampling temperature (Theorem 16.7) is the standard knob exposed to users; $T\to 0$ recovers greedy decoding, $T\to\infty$ uniform random sampling.
+
+Both invocations use the stabilized form of Proposition 16.8 in production kernels (FlashAttention, fused log-softmax + cross-entropy), making the seemingly trivial "subtract the max" identity load-bearing for trillion-parameter training.
 
 <!-- CHAPTER 16 END -->
 
 <!-- CHAPTER 17 START -->
+<a id="chapter-17-loss-functions-mse-cross-entropy-gradients-from-first-principles"></a>
 ## Chapter 17: Loss functions: MSE, cross-entropy; gradients from first principles
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+# Loss functions: MSE, cross-entropy; gradients from first principles
+
+## Motivation
+
+A neural network is a parametric map $f_\theta : \mathcal{X} \to \mathcal{Y}$. To *train* it we need a scalar
+"badness" score whose gradient with respect to $\theta$ tells us how to nudge weights. That scalar is the **loss
+function**. Two losses dominate modern deep learning:
+
+- **Mean squared error (MSE)** for regression targets.
+- **Categorical cross-entropy (CE)** for classification, including the next-token prediction at the heart of
+  every language model.
+
+Both are not arbitrary engineering choices: each is the negative log-likelihood of a generative model (Ch 12).
+And in both cases the *gradient with respect to the network's pre-activation output* collapses to the same
+elegant form, $\hat p - y$, which is what makes backpropagation through deep stacks numerically tractable.
+
+## Definitions
+
+**MSE loss.** For a single scalar prediction $\hat y$ against target $y$,
+$$
+\ell_{\mathrm{MSE}}(y, \hat y) \;=\; \tfrac{1}{2}(y - \hat y)^2.
+$$
+The factor $\tfrac{1}{2}$ is conventional; it cancels in the gradient.
+
+**Categorical cross-entropy.** Let $y \in \{0,1\}^K$ be a one-hot label ($\sum_k y_k = 1$) and
+$\hat p \in \Delta^{K-1}$ a predicted distribution over $K$ classes. Then
+$$
+\ell_{\mathrm{CE}}(y, \hat p) \;=\; -\sum_{k=1}^K y_k \log \hat p_k.
+$$
+This is the cross-entropy $H(y, \hat p)$ of Ch 11 evaluated on a single example.
+
+**Cross-entropy with logits (softmax-CE).** In practice we never store $\hat p$; we store unnormalized logits
+$z \in \mathbb{R}^K$ and apply softmax (Ch 16). Letting $c \in \{1,\dots,K\}$ be the true class index,
+$$
+\ell(z, c) \;=\; -\log \mathrm{softmax}(z)_c \;=\; -z_c + \log \sum_{j=1}^K e^{z_j}.
+$$
+The right-hand form is the **log-sum-exp** identity; it is the only numerically stable way to compute CE
+from logits.
+
+**Binary cross-entropy.** When $K = 2$ we represent the prediction by a single logit $z$ with
+$\hat p = \sigma(z)$ and $y \in \{0, 1\}$:
+$$
+\ell(z, y) \;=\; -y \log \sigma(z) - (1-y)\log(1-\sigma(z)).
+$$
+
+## Theorems
+
+### Theorem 1 (MSE gradient)
+
+$\nabla_{\hat y} \ell_{\mathrm{MSE}} = \hat y - y$.
+
+*Proof.* Differentiate $\tfrac{1}{2}(y-\hat y)^2$ in $\hat y$: $-\tfrac{1}{2}\cdot 2(y-\hat y) = \hat y - y$. $\square$
+
+### Theorem 2 (MSE = MLE under Gaussian noise)
+
+Suppose $y = f_\theta(x) + \varepsilon$ with $\varepsilon \sim \mathcal{N}(0, \sigma^2)$. Then maximum likelihood
+estimation of $\theta$ is equivalent to minimizing MSE.
+
+*Proof.* The Gaussian density gives
+$$
+-\log p_\theta(y \mid x) \;=\; -\log \frac{1}{\sqrt{2\pi}\,\sigma} + \frac{(y - f_\theta(x))^2}{2\sigma^2}
+\;=\; \frac{1}{2\sigma^2}\,(y - f_\theta(x))^2 + C,
+$$
+where $C$ is independent of $\theta$. Summing over an i.i.d. dataset and dropping the additive constant and
+positive multiplicative constant yields $\sum_n \tfrac{1}{2}(y_n - f_\theta(x_n))^2$, which is the MSE
+objective. $\square$
+
+### Theorem 3 (Categorical CE = MLE under softmax)
+
+Let the model be $p_\theta(y = c \mid x) = \mathrm{softmax}(z_\theta(x))_c$. Then for a single sample,
+$-\log p_\theta(y = c \mid x) = -\log \mathrm{softmax}(z)_c = \ell(z, c)$. Summed across i.i.d. samples,
+MLE equals minimization of categorical cross-entropy. This is the single-sample case of the
+$\arg\max$-of-likelihood = $\arg\min$-of-cross-entropy identity proved in Ch 12. $\square$
+
+### Theorem 4 (Softmax + CE gradient)
+
+For $\ell(z, c) = -z_c + \log \sum_j e^{z_j}$,
+$$
+\frac{\partial \ell}{\partial z_j} \;=\; \mathrm{softmax}(z)_j - \mathbf{1}_{[j=c]} \;=\; \hat p_j - y_j.
+$$
+
+*Proof.* $\partial(-z_c)/\partial z_j = -\mathbf{1}_{[j=c]}$. For the log-sum-exp,
+$$
+\frac{\partial}{\partial z_j} \log \sum_k e^{z_k} \;=\; \frac{e^{z_j}}{\sum_k e^{z_k}} \;=\; \mathrm{softmax}(z)_j.
+$$
+Adding the two gives $\hat p_j - \mathbf{1}_{[j=c]}$. The dramatic cancellation hinges on the appearance of
+$\sum_k e^{z_k}$ in *both* the softmax denominator and the CE normalizer; the matrix-vector product implicit
+in the softmax Jacobian (Ch 16) collapses to a vector subtraction. This is *the* identity that makes deep
+classifiers fast: one subtraction per output unit replaces a $K\times K$ matrix multiply. $\square$
+
+### Theorem 5 (Binary CE + sigmoid gradient)
+
+For $\ell(z, y) = -y\log \sigma(z) - (1-y)\log(1-\sigma(z))$, $\partial \ell / \partial z = \sigma(z) - y$.
+
+*Proof.* Use $\log \sigma(z) = -\log(1+e^{-z})$ and $\log(1-\sigma(z)) = -z - \log(1+e^{-z})$. Then
+$\ell = (1-y)z + \log(1+e^{-z})$. Differentiating: $(1-y) - e^{-z}/(1+e^{-z}) = (1-y) - (1-\sigma(z)) =
+\sigma(z) - y$. $\square$
+
+### Theorem 6 (CE minimum at $\hat p = y$)
+
+Treat $y, \hat p \in \Delta^{K-1}$ as full distributions. Then $H(y, \hat p) = -\sum_k y_k \log \hat p_k$ is
+minimized over $\hat p$ at $\hat p = y$.
+
+*Proof.* $H(y, \hat p) - H(y, y) = -\sum_k y_k \log(\hat p_k / y_k) = D_{\mathrm{KL}}(y \,\|\, \hat p) \ge 0$
+by Gibbs' inequality (Ch 11), with equality iff $\hat p = y$. $\square$
+
+## Code sketch
+
+```python
+def softmax_ce_with_logits(z, c):
+    z = z - z.max()                      # log-sum-exp stabilization
+    lse = np.log(np.exp(z).sum())
+    loss = -z[c] + lse
+    p = np.exp(z - lse)                  # softmax(z)
+    grad = p.copy(); grad[c] -= 1.0      # p - y
+    return loss, grad
+```
+
+The forward and backward share the cached softmax $\hat p$; the entire backward is a single
+in-place subtraction.
+
+## Connection to LLMs
+
+A causal language model (Ch 25) at every position $t$ emits logits $z_t \in \mathbb{R}^V$ over a vocabulary of
+size $V$. The training loss across a sequence $x_1,\dots,x_T$ is
+$$
+\mathcal{L}(\theta) \;=\; \sum_{t=1}^{T} -\log p_\theta(x_t \mid x_{<t}) \;=\; \sum_{t=1}^{T} \ell(z_t,\, x_t),
+$$
+i.e. *cross-entropy with logits, summed over positions*. By Theorem 4 the gradient at the output layer is
+$\hat p_t - y_t$ at every position — a single subtraction per token, per vocabulary entry. This signal flows
+backwards through the unembedding, the transformer blocks (Ch 27 forward), and finally into the token
+embeddings. Without the softmax-CE collapse, gradient computation at $V \approx 10^5$ would be infeasible.
+Every LLM ever trained leans on Theorem 4.
 
 <!-- CHAPTER 17 END -->
 
 <!-- CHAPTER 18 START -->
+<a id="chapter-18-backpropagation-chain-rule-applied-reverse-mode-ad-as-a-graph-algorithm"></a>
 ## Chapter 18: Backpropagation: chain rule applied; reverse-mode AD as a graph algorithm
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+Chapter 17 ended with a remarkably clean fact: for softmax + cross-entropy, the gradient of the loss with respect to the pre-softmax logits is just $\hat p - y$. That formula is exact and pleasant — but it tells us only the *output-layer* gradient. To train an actual network we need the gradient of the loss with respect to *every* parameter, including those buried under tens of intermediate nonlinearities. The naive approach — symbolic differentiation — produces expressions whose size explodes exponentially with depth. The naive numerical approach — finite differences over $P$ parameters — costs $O(P)$ forward passes, prohibitive when $P \approx 10^{11}$.
+
+Backpropagation solves both problems at once. It is not a new mathematical idea: it is the multivariate chain rule (Chapter 4) applied along a directed acyclic graph in a particularly clever order. We make this precise.
+
+## Computational graphs and AD
+
+\textbf{Definition (Computational graph).} A *computational graph* is a DAG whose nodes are intermediate values $v_i \in \mathbb{R}^{d_i}$ and whose edges are elementary operations. Source nodes are inputs; sink nodes are outputs. A *forward pass* computes all $v_i$ in topological order given the inputs.
+
+\textbf{Definition (JVP / forward-mode AD).} Given a tangent vector $\dot x$, forward-mode AD propagates $\dot v_i = \sum_{j \in \text{parents}(i)} \frac{\partial v_i}{\partial v_j} \dot v_j$ in topological order. One sweep computes $J \dot x$ for the full Jacobian $J = \partial f/\partial x$. Cost: one pass per *input* dimension to recover the full Jacobian.
+
+\textbf{Definition (VJP / reverse-mode AD).} Given a cotangent $\bar y$ at the output, reverse-mode AD propagates *adjoints* $\bar v_i$ in *reverse* topological order:
+$$
+\bar v_j = \sum_{i \in \text{children}(j)} \left(\frac{\partial v_i}{\partial v_j}\right)^T \bar v_i.
+$$
+One sweep computes $J^T \bar y$. Cost: one pass per *output* dimension. When the output is a scalar loss $L$, a single backward pass yields $\nabla_x L$. The adjoint $\bar v_i := \partial L / \partial v_i$ is the central object of backprop.
+
+## The backprop theorem
+
+\textbf{Theorem (Backprop = reverse-mode AD on a feedforward net).} Let $L(x) = \ell(h^{(L)})$ where $h^{(\ell)} = f^{(\ell)}(h^{(\ell-1)})$, $h^{(0)} = x$, and each $f^{(\ell)}$ is differentiable with Jacobian $J^{(\ell)} := \partial f^{(\ell)} / \partial h^{(\ell-1)}$. Define adjoints $\bar h^{(\ell)} := \partial L / \partial h^{(\ell)}$ as row vectors. Then
+$$
+\bar h^{(L)} = \nabla \ell(h^{(L)}), \qquad \bar h^{(\ell-1)} = (J^{(\ell)})^T \bar h^{(\ell)}.
+$$
+
+\textbf{Proof.} By the multivariate chain rule (Ch. 4), for any $\ell$,
+$\partial L / \partial h^{(\ell-1)} = (\partial L / \partial h^{(\ell)})(\partial h^{(\ell)} / \partial h^{(\ell-1)}) = \bar h^{(\ell)} J^{(\ell)}$,
+which transposed gives the adjoint recurrence. The base case is the gradient of $\ell$ at $h^{(L)}$. Induction over $\ell = L, L-1, \ldots, 1$. $\square$
+
+For Ch. 17's softmax + cross-entropy block, $\bar h^{(L)} = \hat p - y$ is the base case and the recurrence does the rest.
+
+## VJPs for an MLP layer
+
+\textbf{Proposition.} For a layer $z^{(\ell)} = W^{(\ell)} h^{(\ell-1)} + b^{(\ell)}$, $h^{(\ell)} = \sigma(z^{(\ell)})$ with elementwise $\sigma$, the VJPs are
+$$
+\bar z^{(\ell)} = \bar h^{(\ell)} \odot \sigma'(z^{(\ell)}), \quad \bar W^{(\ell)} = \bar z^{(\ell)} (h^{(\ell-1)})^T, \quad \bar b^{(\ell)} = \bar z^{(\ell)}, \quad \bar h^{(\ell-1)} = (W^{(\ell)})^T \bar z^{(\ell)}.
+$$
+
+\textbf{Derivation.} The chain rule gives $\bar z^{(\ell)}_i = \sum_k \bar h^{(\ell)}_k \, \partial h^{(\ell)}_k / \partial z^{(\ell)}_i = \bar h^{(\ell)}_i \sigma'(z^{(\ell)}_i)$ since $\sigma$ is elementwise. For $W$, since $z_i = \sum_j W_{ij} h^{(\ell-1)}_j$, $\partial z_i / \partial W_{kj} = \delta_{ik} h^{(\ell-1)}_j$, so $\bar W_{kj} = \bar z_k h^{(\ell-1)}_j$, i.e. an outer product. The bias is $\partial z_i / \partial b_j = \delta_{ij}$. For $h^{(\ell-1)}$, $\partial z_i / \partial h^{(\ell-1)}_j = W_{ij}$, giving $\bar h^{(\ell-1)} = W^T \bar z^{(\ell)}$. $\square$
+
+## Cost and memory
+
+\textbf{Theorem (Baur–Strassen).} For a function defined by $K$ elementary operations with bounded fan-out, the gradient can be computed by an algorithm whose arithmetic cost is at most $\sim 5 K$ — i.e., the backward pass costs only a small constant times the forward pass, *independent of the number of parameters*.
+
+This is the magic. We pay a constant overhead, not a $P$-fold one, to differentiate with respect to all $P$ parameters simultaneously. Forward-mode AD does the opposite: $O(n)$ for $n$ inputs, $O(1)$ in outputs.
+
+\textbf{Memory.} The recurrence $\bar h^{(\ell-1)} = (J^{(\ell)})^T \bar h^{(\ell)}$ requires evaluating $J^{(\ell)}$, which usually depends on $h^{(\ell-1)}$ (e.g. $\sigma'(z^{(\ell)})$). Hence reverse-mode AD must *cache* every intermediate activation produced during the forward pass — memory cost is $O(L)$ in depth times batch and width. This is exactly the constraint that motivates *gradient checkpointing* (Ch. 27): drop activations and recompute them on the backward pass, trading compute for memory.
+
+## Connection to LLMs
+
+A modern transformer has $L \in [12, 96]$ blocks, each consisting of attention + MLP sub-layers. Training one step is: (1) forward pass through all $L$ blocks, caching activations; (2) reverse-mode AD computing $\nabla_\theta L$ for every parameter (often $\theta \in \mathbb{R}^{10^{11}}$) in time $\le 5\times$ the forward pass — Baur–Strassen in action; (3) optimizer step. The per-token activation memory is the dominant constraint at scale and is precisely why frameworks ship gradient checkpointing, FlashAttention recomputation (Ch. 23), and ZeRO-style sharding by default. Every parameter update in a 175B model is the recurrence above, executed billions of times.
 
 <!-- CHAPTER 18 END -->
 
@@ -1126,23 +1452,192 @@ _(This chapter is currently a stub. It will contain Motivation, Definitions, The
 # Block E — Sequence Models and Attention
 
 <!-- CHAPTER 19 START -->
+<a id="chapter-19-embeddings-token-to-vector-lookup-as-a-linear-map-weight-tying"></a>
 ## Chapter 19: Embeddings: token to vector; lookup as a linear map; weight tying
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+A transformer language model never sees the symbol *cat*. It sees an integer index $v \in \{0, 1, \ldots, V-1\}$ which is then mapped to a vector in $\mathbb{R}^d$. That vector is the only representation downstream layers ever touch: attention, MLPs, normalizations, residuals — everything is linear algebra on $\mathbb{R}^d$. The gateway between the discrete vocabulary $\mathcal{V}$ (Chapter 1) and the continuous geometry of $\mathbb{R}^d$ is the **embedding matrix**. This chapter shows that this gateway is not a fancy table lookup at all: it is the linear map of Chapter 5 applied to a one-hot vector. The trick of *weight tying* — sharing parameters between the input embedding and the output projection — then falls out as a very natural identification.
+
+## Definitions
+
+Let $\mathcal{V} = \{w_1, \ldots, w_V\}$ be a finite **vocabulary** (Chapter 1); we identify $\mathcal{V}$ with $\{0, 1, \ldots, V-1\}$ via tokenization order.
+
+**Definition (One-hot encoding).** For $v \in \{0, \ldots, V-1\}$ the **one-hot vector** is $e_v \in \{0, 1\}^V$ with $e_v[i] = \mathbf{1}_{i = v}$. Equivalently, $e_v$ is the $v$-th standard basis vector of $\mathbb{R}^V$.
+
+**Definition (Embedding matrix and lookup).** An **embedding matrix** is a parameter $E \in \mathbb{R}^{d \times V}$. Its columns $\{E_{:, 0}, \ldots, E_{:, V-1}\}$ are called **token embeddings**; the integer $d$ is the **embedding dimension** (also called $d_{\mathrm{model}}$). The **embedding lookup** is the function $\mathrm{emb} : \mathcal{V} \to \mathbb{R}^d$, $\mathrm{emb}(v) := E e_v$.
+
+**Definition (Output projection / unembedding).** An **output projection** is a parameter $U \in \mathbb{R}^{V \times d}$ taking a hidden state $h \in \mathbb{R}^d$ to a logit vector $z := U h \in \mathbb{R}^V$. The probability over the vocabulary is $\hat p = \mathrm{softmax}(z)$ (Chapter 9, 17).
+
+**Definition (Weight tying, Press & Wolf 2016; Inan et al. 2017).** A model with embedding matrix $E \in \mathbb{R}^{d \times V}$ and output projection $U \in \mathbb{R}^{V \times d}$ is **weight-tied** if $U = E^\top$. The two layers then share the same $dV$ scalar parameters.
+
+## Theorems and proofs
+
+**Theorem 1 (Lookup is a linear map).** *For every $v \in \{0, \ldots, V-1\}$, $E e_v = E_{:, v}$.*
+
+*Proof.* By the definition of matrix–vector multiplication (Chapter 5), $(E e_v)_i = \sum_{j = 0}^{V-1} E_{ij}\, (e_v)_j = \sum_j E_{ij} \mathbf{1}_{j = v} = E_{iv}$ for every $i \in \{0, \ldots, d-1\}$. Stacking these scalars gives the $i$-th coordinate of the column $E_{:, v}$, hence $E e_v = E_{:, v}$. $\blacksquare$
+
+So embedding-table lookup is a linear map $\mathbb{R}^V \to \mathbb{R}^d$ in disguise. Implementations skip the matmul and slice the column; the *meaning* is the matrix product.
+
+**Theorem 2 (Weight-tying gradient identity).** *Let $E \in \mathbb{R}^{d \times V}$ and consider a model $f(v, E) = U h(E e_v) = E^\top h(E e_v)$ with tied $U = E^\top$, where $h : \mathbb{R}^d \to \mathbb{R}^d$ is some sub-network with no further dependence on $E$. Let $\mathcal{L}$ be a scalar loss applied to the logits $z = E^\top h \in \mathbb{R}^V$. Then*
+$$
+\nabla_E \mathcal{L} \;=\; \underbrace{h\, (\nabla_z \mathcal{L})^\top}_{\text{output-side}} \;+\; \underbrace{\big(J_h^\top E\, \nabla_z \mathcal{L}\big)\, e_v^\top}_{\text{input-side}},
+$$
+*where $J_h \in \mathbb{R}^{d \times d}$ is the Jacobian of $h$ at the point $E e_v$. The input-side contribution is a rank-one matrix whose only nonzero column is column $v$.*
+
+*Proof.* Treat $E$ as occurring in two distinct roles: an output role $U = E^\top$ and an input role inside $h \circ (E \cdot e_v)$. By the multivariate chain rule (Chapter 18), the total gradient is the sum of the partial gradients with respect to each role.
+
+*Output role.* The logit is $z = U h$ with $U = E^\top$, so $z_k = \sum_i E_{ik} h_i$ and $\partial z_k / \partial E_{ij} = \mathbf{1}_{k = j} h_i$. Hence
+$$\frac{\partial \mathcal{L}}{\partial E_{ij}} \bigg|_{\text{out}} = \sum_k \frac{\partial \mathcal{L}}{\partial z_k} \frac{\partial z_k}{\partial E_{ij}} = h_i\, \frac{\partial \mathcal{L}}{\partial z_j},$$
+so the output-side contribution is the outer product $h\, (\nabla_z \mathcal{L})^\top \in \mathbb{R}^{d \times V}$.
+
+*Input role.* The hidden state is $h = h(x)$ with $x = E e_v$, so $x_i = E_{iv}$ and $\partial x_i / \partial E_{ab} = \mathbf{1}_{a = i}\mathbf{1}_{b = v}$. By the chain rule,
+$$\frac{\partial \mathcal{L}}{\partial E_{ab}} \bigg|_{\text{in}} = \sum_i \frac{\partial \mathcal{L}}{\partial x_i} \frac{\partial x_i}{\partial E_{ab}} = \frac{\partial \mathcal{L}}{\partial x_a}\, \mathbf{1}_{b = v}.$$
+The vector $\nabla_x \mathcal{L} = J_h^\top \nabla_h \mathcal{L} = J_h^\top (E\, \nabla_z \mathcal{L})$ since $\nabla_h \mathcal{L} = U^\top \nabla_z \mathcal{L} = E\, \nabla_z \mathcal{L}$. Hence the input-side contribution is the rank-one matrix $g\, e_v^\top$ with $g := J_h^\top E\, \nabla_z \mathcal{L} \in \mathbb{R}^d$, whose only nonzero column is $g$ in position $v$. Adding the two roles gives the claim. $\blacksquare$
+
+**Remark (Sparsity of the input gradient).** The factor $e_v^\top$ kills every column except column $v$. This is why embedding tables are conventionally updated via a *sparse* gradient: each minibatch only touches the columns of the tokens it actually contains. The output-side term, by contrast, hits *all* $V$ columns through the dense outer product $h (\nabla_z \mathcal{L})^\top$.
+
+**Heuristic (Distributional semantics; Mikolov et al. 2013).** During training, two tokens $u, v$ that appear in similar surrounding contexts produce similar gradients on their embeddings (the "context" enters through $\nabla_z \mathcal{L}$ and through $h$). Iterating, $E_{:, u}$ and $E_{:, v}$ drift toward similar locations in $\mathbb{R}^d$, so cosine similarity of embeddings tracks distributional similarity in the corpus. This is an empirical claim, not a theorem; we illustrate it in code.
+
+**Theorem 3 (Dimensionality bound).** *If $V > d$ then no choice of $E \in \mathbb{R}^{d \times V}$ makes the columns $E_{:, 0}, \ldots, E_{:, V-1}$ pairwise orthogonal and nonzero.*
+
+*Proof.* Pairwise orthogonal nonzero vectors in any inner-product space are linearly independent: from $\sum_v c_v E_{:, v} = 0$, taking the inner product with $E_{:, u}$ yields $c_u \|E_{:, u}\|^2 = 0$, so $c_u = 0$. Hence the columns would form a linearly independent set of size $V$ in $\mathbb{R}^d$. By Chapter 5 (invariance of dimension), $\dim \mathbb{R}^d = d$, so any independent set has size $\leq d$. Therefore $V \leq d$, contradicting $V > d$. $\blacksquare$
+
+In LLMs we always have $V \gg d$ (e.g. $V \approx 5\cdot 10^4$ vs.\ $d \approx 4096$), so the embeddings cannot be mutually orthogonal — they live as an *overcomplete* set, and "near-orthogonality" is the best one can ask.
+
+## Code sketch
+
+We build a tiny embedding matrix and verify $E e_v = E_{:, v}$ exactly. We then construct a tied unembedding $U = E^\top$ and check that the logit for token $v$ equals $\langle E_{:, v}, h \rangle$. Next, a Mikolov-style skip-gram on a synthetic corpus shows that embeddings of co-occurring tokens develop higher cosine similarity than non-co-occurring ones after a few hundred SGD steps. Finally, we verify Theorem 3 by attempting to orthogonalize $V = 8$ vectors in $\mathbb{R}^3$ via Gram–Schmidt and observing dimension exhaustion.
+
+## Connection to LLMs
+
+Every transformer language model contains exactly the data structure of this chapter: an input embedding $E \in \mathbb{R}^{d \times V}$ and an output projection $U \in \mathbb{R}^{V \times d}$. The embedding dimension $d$ is the *model dimension* $d_{\mathrm{model}}$, which is what dominates parameter counts and FLOPs (Chapter 23–25). GPT-2 (Radford et al. 2019), Llama 1/2/3 (Touvron et al. 2023), and most open-weight LMs use weight tying $U = E^\top$, halving the embedding parameter count and empirically improving perplexity (Press & Wolf 2016; Inan et al. 2017). GPT-3/4 use an LM-head that is initialized from $E^\top$ but may be trained separately. Once a token is embedded, position information is added (Chapter 20), and the residual stream begins (Chapter 22). Every operation downstream — including the final logit projection $U h_{\text{final}}$ — is the same matrix $E$ that began the forward pass, viewed from a different side.
 
 <!-- CHAPTER 19 END -->
 
 <!-- CHAPTER 20 START -->
+<a id="chapter-20-rnn-intuition-vanishing-gradient-proof-why-we-need-attention"></a>
 ## Chapter 20: RNN intuition; vanishing-gradient proof; why we need attention
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+So far we have built feedforward networks (Ch.\ 17--19): a fixed-depth pipeline of linear maps and nonlinearities. But language, audio, and code are *sequences*: the output at position $t$ depends on inputs $x_1, \dots, x_t$, and the sequence length $T$ varies. We need a model that consumes one token at a time, accumulates context, and emits one prediction per step. The Recurrent Neural Network (RNN) was the dominant answer from the late 1980s through 2017. In this chapter we derive its forward dynamics, prove the **vanishing/exploding gradient theorem** (Pascanu, Mikolov, Bengio 2013) using the SVD machinery of Chapter 6 and the backprop chain rule of Chapter 18, and show that this failure mode--together with a parallel *information bottleneck*--is precisely what attention (Ch.\ 21--24) was invented to fix.
+
+## Definitions
+
+**Sequence model.** A map $f : \mathcal{X}^T \to \mathcal{Y}^T$ that consumes $(x_1, \dots, x_T)$ and emits $(y_1, \dots, y_T)$, with the *causality* constraint $y_t = f_t(x_1, \dots, x_t)$.
+
+**RNN cell.** Fix hidden dimension $d$ and parameters $W_h \in \mathbb{R}^{d \times d}$, $W_x \in \mathbb{R}^{d \times \dim x}$, $b \in \mathbb{R}^d$, and a pointwise nonlinearity $\sigma$ (typically $\tanh$). The RNN cell is the recursion
+$$h_t = \sigma(W_h h_{t-1} + W_x x_t + b), \qquad h_0 = 0.$$
+The output is $y_t = W_y h_t$.
+
+**Backpropagation through time (BPTT).** Unroll the recursion into an acyclic computation graph of depth $T$, sharing the weights $(W_h, W_x, b)$ across every time step, then apply the backprop algorithm of Chapter 18 to that graph. The shared-weight gradient is the sum of the per-step gradients.
+
+## Theorem 1 (Vanishing/Exploding Gradient, Pascanu et al.\ 2013)
+
+*Linearized statement.* Drop the nonlinearity and biases: $h_t = W h_{t-1}$ with $W \in \mathbb{R}^{d \times d}$. Let $L$ be a scalar loss depending on $h_T$. Then for any $t < T$,
+$$\frac{\partial L}{\partial h_t} = (W^\top)^{T-t} \frac{\partial L}{\partial h_T}.$$
+Consequently, with $\sigma_{\max}(W)$ the largest singular value,
+$$\Big\| \frac{\partial L}{\partial h_t} \Big\| \leq \sigma_{\max}(W)^{T-t} \Big\| \frac{\partial L}{\partial h_T} \Big\|,$$
+with equality achievable. If $\sigma_{\max}(W) < 1$ the gradient *vanishes* exponentially in $T-t$; if $\sigma_{\max}(W) > 1$ it *explodes*.
+
+**Proof.** By the multivariable chain rule (Ch.\ 18), $\partial h_t / \partial h_{t-1} = W$, so $\partial L / \partial h_{t-1} = W^\top \partial L / \partial h_t$. Iterating $T-t$ times gives the claimed product. By Chapter 6, $W = U \Sigma V^\top$, so $(W^\top)^{T-t} = V \Sigma^{T-t} U^\top$ (using $W^\top = V \Sigma U^\top$ and unitarity), and the operator-norm bound is just $\|\Sigma^{T-t}\|_2 = \sigma_{\max}(W)^{T-t}$. The bound is attained by aligning $\partial L / \partial h_T$ with the top left singular vector of $W^{T-t}$. $\blacksquare$
+
+**Nonlinear extension.** With $\sigma$ such that $|\sigma'| \leq c$ pointwise (true for $\tanh$ with $c = 1$), the Jacobian of one step is $D_t W$ where $D_t = \mathrm{diag}(\sigma'(\cdot))$ has $\|D_t\|_2 \leq c$. Submultiplicativity of the operator norm gives
+$$\Big\| \frac{\partial L}{\partial h_t} \Big\| \leq c^{T-t} \|W\|_2^{T-t} \Big\| \frac{\partial L}{\partial h_T} \Big\|.$$
+For $\tanh$, $c = 1$ and saturated regions push $\|D_t\|$ much below $1$, *worsening* vanishing.
+
+## Theorem 2 (Information Bottleneck of an RNN)
+
+The hidden state $h_t \in \mathbb{R}^d$ is a deterministic function of $(x_1, \dots, x_t)$, so it carries at most $d$ real-valued degrees of freedom. By a counting / rate--distortion argument, if the inputs come from an alphabet of size $V$ and we want to losslessly recover $(x_1, \dots, x_t)$ from $h_t$, we need $d \geq \lceil t \log_2 V / B \rceil$ bits, where $B$ is the per-coordinate precision. Once $t \log_2 V \gg d B$, *some* information must be discarded; the per-token signal-to-noise of past tokens decays as $1/t$. *Sketch:* this is the data-processing inequality applied to the deterministic Markov chain $(x_1, \dots, x_t) \to h_t \to \hat x_s$ for $s \ll t$.
+
+## Theorem 3 (Attention Dissolves Both Bottlenecks --- Sketch)
+
+Let $h_T = \sum_{s=1}^T \alpha_{Ts} V_s$, where $V_s = V x_s$ are value vectors and $\alpha_{Ts}$ are scalar weights (in Ch.\ 21 we make $\alpha$ a learned softmax of query--key dot products). Then for *any* $s$,
+$$\frac{\partial h_T}{\partial V_s} = \alpha_{Ts} I_d, \qquad \frac{\partial L}{\partial V_s} = \alpha_{Ts} \frac{\partial L}{\partial h_T}.$$
+This is a *single* matrix-product step, independent of $T - s$. There is no exponentiation of any spectral quantity, so no vanishing/exploding regime in the depth direction. Furthermore, every past token has its own slot $V_s$ in working memory, so the bottleneck of Theorem 2 is replaced by an $O(T \cdot d)$-sized addressable cache. The full derivation, including queries, keys, and softmax, is Chapter 21.
+
+## Connection to LLMs
+
+The vanishing-gradient theorem is *the* historical reason transformer-based LLMs displaced RNNs. Bahdanau, Cho, and Bengio (2015) added attention to a seq2seq RNN to fix translation of long sentences; Vaswani et al.\ (2017, "Attention Is All You Need") removed recurrence entirely. Without an $O(1)$ gradient path between distant positions, scaling to $10^4$--$10^6$-token contexts is hopeless: a $\sigma_{\max} = 0.99$ RNN attenuates by $e^{-100}$ over $10\,000$ steps. We make this rigorous in Ch.\ 21 (single-head attention), generalize in Ch.\ 22 (multi-head), embed in the full Transformer block in Ch.\ 23, and scale in Ch.\ 24.
 
 <!-- CHAPTER 20 END -->
 
 <!-- CHAPTER 21 START -->
+<a id="chapter-21-scaled-dot-product-attention-derivation-softmax-temperature-analysis"></a>
 ## Chapter 21: Scaled dot-product attention: derivation, softmax-temperature analysis
 
-_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+## Motivation
+
+Chapter 20 ended with a sharp negative result: recurrent networks propagate gradients through $|i-j|$ multiplicative steps, so information from token $j$ reaches token $i$ only after a chain of contractions or expansions. Either the gradient vanishes ($\rho < 1$) or it explodes ($\rho > 1$). Long-range dependencies are statistically unreachable.
+
+We now build a primitive that escapes this: **scaled dot-product attention** (Vaswani et al., 2017). It connects every output position to every input position through a *single* matrix multiplication, so the gradient between any pair of tokens travels in $O(1)$ depth. Combined with the embedding layer of Chapter 19 and the linear maps of Chapter 5, it yields the building block of every modern transformer LM.
+
+## Definitions
+
+Let $X \in \mathbb{R}^{T \times d_{\mathrm{model}}}$ be a sequence of $T$ token vectors (e.g.\ embeddings from Chapter 19). Fix projection matrices
+$$
+W_Q, W_K \in \mathbb{R}^{d_{\mathrm{model}} \times d_k}, \qquad W_V \in \mathbb{R}^{d_{\mathrm{model}} \times d_v},
+$$
+and define **queries, keys, and values**
+$$
+Q = X W_Q, \quad K = X W_K, \quad V = X W_V.
+$$
+
+**Definition (Scaled dot-product attention).**
+$$
+\mathrm{Attn}(Q, K, V) = \mathrm{softmax}\!\left( \tfrac{Q K^\top}{\sqrt{d_k}} \right) V.
+$$
+The softmax is applied row-wise. We call $A := \mathrm{softmax}(QK^\top/\sqrt{d_k}) \in \mathbb{R}^{T \times T}$ the **attention weights**. Each row $A_{i,:}$ is a probability vector ($A_{ij} \geq 0$, $\sum_j A_{ij} = 1$). When $Q, K, V$ are all derived from the same $X$, this is **self-attention**; if instead $K, V$ come from a second sequence $Y$, it is **cross-attention**.
+
+## Theorems
+
+**Theorem 1 (Attention as a soft database lookup).** *For each query index $i$, the output row $\mathrm{Attn}(Q,K,V)_i$ is a convex combination of the value rows $V_j$.*
+
+*Proof.* By construction $A_{i,:}$ is the softmax of a real vector, so $A_{ij} \in (0,1)$ and $\sum_j A_{ij} = 1$ (Chapter 16). Then $(A V)_i = \sum_j A_{ij} V_j \in \mathrm{conv}\{V_1, \dots, V_T\}$. $\square$
+
+**Theorem 2 (Variance of dot products controls softmax temperature).** *Suppose $Q_{i,:}$ and $K_{j,:}$ have i.i.d.\ entries with mean $0$ and variance $1$, independent of each other. Then*
+$$
+\mathbb{E}[Q_i \cdot K_j] = 0, \qquad \mathrm{Var}(Q_i \cdot K_j) = d_k.
+$$
+*Hence $(QK^\top)_{ij}/\sqrt{d_k}$ has unit variance.*
+
+*Proof.* Write $S = \sum_{k=1}^{d_k} Q_{ik} K_{jk}$. By linearity and independence,
+$$
+\mathbb{E}[S] = \sum_k \mathbb{E}[Q_{ik}]\,\mathbb{E}[K_{jk}] = 0.
+$$
+For the second moment, since terms with distinct $k \neq k'$ are mean-zero and independent (so their cross terms vanish in expectation),
+$$
+\mathbb{E}[S^2] = \sum_{k} \mathbb{E}[Q_{ik}^2 K_{jk}^2] + \sum_{k \neq k'} \mathbb{E}[Q_{ik} K_{jk}]\mathbb{E}[Q_{ik'} K_{jk'}] = \sum_{k} 1 \cdot 1 + 0 = d_k.
+$$
+Therefore $\mathrm{Var}(S) = d_k$, and dividing by $\sqrt{d_k}$ rescales to unit variance. $\square$
+
+**Corollary 3 (Saturation without scaling).** *Without the $1/\sqrt{d_k}$ factor, the logits $S$ feeding softmax have standard deviation $\sqrt{d_k}$, growing without bound. As $d_k \to \infty$, the maximum logit dominates and softmax concentrates on a single index. The Jacobian $\partial \mathrm{softmax}_i / \partial s_j = \mathrm{softmax}_i (\delta_{ij} - \mathrm{softmax}_j)$ then collapses, vanishing the gradient w.r.t. $Q, K$.*
+
+The factor $1/\sqrt{d_k}$ is therefore a *temperature normalization* keeping softmax in the well-conditioned regime where it has rank-$(T-1)$ Jacobian and informative gradients.
+
+**Theorem 4 (Permutation equivariance).** *Let $\pi$ be a permutation of $\{1,\dots,T\}$ with permutation matrix $P_\pi$. Then*
+$$
+\mathrm{Attn}(P_\pi Q, P_\pi K, P_\pi V) = P_\pi \, \mathrm{Attn}(Q, K, V).
+$$
+
+*Proof.* The pre-softmax matrix becomes $(P_\pi Q)(P_\pi K)^\top / \sqrt{d_k} = P_\pi (Q K^\top) P_\pi^\top / \sqrt{d_k}$. Row-wise softmax commutes with row permutation: $\mathrm{softmax}(P_\pi M P_\pi^\top) = P_\pi \,\mathrm{softmax}(M P_\pi^\top \cdot)$, but more cleanly, applied row-by-row, $A' = P_\pi A P_\pi^\top$. Then $A' (P_\pi V) = P_\pi A P_\pi^\top P_\pi V = P_\pi A V$. $\square$
+
+This symmetry is *too strong*: attention cannot tell "the cat sat" from "sat cat the". Chapter 24 will repair this with positional encodings.
+
+**Theorem 5 (O(1) gradient depth).** *Fix output position $i$ and input position $j$. The Jacobian $\partial (AV)_i / \partial V_j = A_{ij} I_{d_v}$ has spectral norm $A_{ij} \in (0,1)$, regardless of $|i-j|$.*
+
+*Proof.* $(AV)_i = \sum_\ell A_{i\ell} V_\ell$, so $\partial (AV)_i / \partial V_j = A_{ij} I$. $\square$
+
+Compare with Chapter 20: an RNN has $\|\partial h_i/\partial h_j\| \lesssim \rho^{|i-j|}$. Attention is exponentially better in distance, paying instead $O(T^2)$ in compute for the $A$ matrix.
+
+## Code sketch
+
+In `cells.json` we (i) implement attention from scratch, (ii) empirically confirm $\mathrm{Var}(Q\cdot K) = d_k$, (iii) measure entropy collapse without scaling, (iv) verify permutation equivariance to floating-point, and (v) compute gradient magnitude across $T=50$ for both attention and an RNN.
+
+## Connection to LLMs
+
+Scaled dot-product attention is **the** primitive of every transformer. Chapter 22 stacks $h$ heads of it (multi-head attention); Chapter 23 wires attention together with MLPs and residual streams into the transformer block; Chapter 24 fixes Theorem 4 with positional encodings. Production-scale variants — Flash Attention (IO-aware tiling), multi-query and grouped-query attention (sharing $K, V$ across heads), sliding-window and linear attention — all preserve the scaled-softmax form derived here. Whenever you call an LLM, every token interaction inside it is an instance of $\mathrm{softmax}(QK^\top/\sqrt{d_k}) V$.
 
 <!-- CHAPTER 21 END -->
 

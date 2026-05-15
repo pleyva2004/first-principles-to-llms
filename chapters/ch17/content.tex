@@ -1,0 +1,151 @@
+\subsection*{Motivation}
+
+A neural network is a parametric map $f_\theta : \mathcal{X} \to \mathcal{Y}$. Training requires a scalar
+``badness'' score whose gradient with respect to $\theta$ tells us how to nudge weights. That scalar is the
+\emph{loss function}. Two losses dominate modern deep learning: \textbf{mean squared error} (MSE) for
+regression, and \textbf{categorical cross-entropy} (CE) for classification, including next-token prediction
+in every language model. Neither is arbitrary: each is the negative log-likelihood of a generative model
+(Ch.~12), and in both cases the gradient with respect to the network's pre-activation output collapses to
+$\hat p - y$, an identity that makes backpropagation through deep stacks tractable.
+
+\subsection*{Definitions}
+
+\begin{definition}[MSE loss]
+For scalar prediction $\hat y$ and target $y$,
+\[
+\ell_{\mathrm{MSE}}(y, \hat y) \;=\; \tfrac{1}{2}(y - \hat y)^2.
+\]
+The factor $\tfrac12$ is conventional; it cancels in the gradient.
+\end{definition}
+
+\begin{definition}[Categorical cross-entropy]
+For a one-hot label $y \in \{0,1\}^K$ with $\sum_k y_k = 1$ and a predicted distribution
+$\hat p \in \Delta^{K-1}$,
+\[
+\ell_{\mathrm{CE}}(y, \hat p) \;=\; -\sum_{k=1}^K y_k \log \hat p_k.
+\]
+This is $H(y, \hat p)$ from Ch.~11 evaluated on a single example.
+\end{definition}
+
+\begin{definition}[Cross-entropy with logits]
+For logits $z \in \mathbb{R}^K$ and true class $c \in \{1,\dots,K\}$,
+\[
+\ell(z, c) \;=\; -\log \mathrm{softmax}(z)_c \;=\; -z_c + \log \sum_{j=1}^K e^{z_j}.
+\]
+The right-hand log-sum-exp form is the only numerically stable evaluation route.
+\end{definition}
+
+\begin{definition}[Binary cross-entropy]
+For $K=2$ with logit $z$, $\hat p = \sigma(z)$, and $y \in \{0,1\}$,
+\[
+\ell(z, y) \;=\; -y \log \sigma(z) - (1-y)\log(1-\sigma(z)).
+\]
+\end{definition}
+
+\subsection*{Theorems and proofs}
+
+\begin{theorem}[MSE gradient]
+$\nabla_{\hat y}\, \ell_{\mathrm{MSE}}(y, \hat y) = \hat y - y.$
+\end{theorem}
+\begin{proof}
+$\frac{d}{d\hat y}\bigl[\tfrac12 (y-\hat y)^2\bigr] = -(y-\hat y) = \hat y - y$.
+\end{proof}
+
+\begin{theorem}[MSE = MLE under Gaussian noise]
+If $y = f_\theta(x) + \varepsilon$ with $\varepsilon \sim \mathcal{N}(0, \sigma^2)$, then maximum likelihood
+estimation is equivalent to MSE minimization.
+\end{theorem}
+\begin{proof}
+The Gaussian density gives
+\[
+-\log p_\theta(y \mid x)
+\;=\; \tfrac12 \log(2\pi\sigma^2) + \frac{(y - f_\theta(x))^2}{2\sigma^2}
+\;=\; \frac{1}{2\sigma^2} (y - f_\theta(x))^2 + C,
+\]
+where $C$ is independent of $\theta$. Summing across an i.i.d.\ dataset and dropping the additive constant
+and the positive multiplier $1/\sigma^2$ yields $\sum_n \tfrac12 (y_n - f_\theta(x_n))^2$, the MSE objective.
+The argmin in $\theta$ coincides with the argmax of the log-likelihood.
+\end{proof}
+
+\begin{theorem}[Categorical CE = MLE under softmax]
+Let $p_\theta(y = c \mid x) = \mathrm{softmax}(z_\theta(x))_c$. Then
+$-\log p_\theta(y = c \mid x) = \ell(z, c)$, so MLE summed over an i.i.d.\ dataset equals categorical CE
+minimization.
+\end{theorem}
+\begin{proof}
+Direct from the definition of $\ell(z, c)$ and the identity $\arg\max \log L = \arg\min H_{\mathrm{cross}}$
+proved in Ch.~12.
+\end{proof}
+
+\begin{theorem}[Softmax + CE gradient]
+For $\ell(z, c) = -z_c + \log \sum_j e^{z_j}$,
+\[
+\frac{\partial \ell}{\partial z_j} \;=\; \mathrm{softmax}(z)_j - \mathbf{1}_{[j=c]} \;=\; \hat p_j - y_j.
+\]
+\end{theorem}
+\begin{proof}
+$\partial(-z_c)/\partial z_j = -\mathbf{1}_{[j=c]}$. For the log-sum-exp,
+\[
+\frac{\partial}{\partial z_j} \log \sum_k e^{z_k}
+\;=\; \frac{e^{z_j}}{\sum_k e^{z_k}}
+\;=\; \mathrm{softmax}(z)_j.
+\]
+Adding gives $\hat p_j - \mathbf{1}_{[j=c]}$. The cancellation occurs because the $\sum_k e^{z_k}$ in
+softmax's denominator is the \emph{same} normalizer that appears inside $\ell$; the matrix-vector product
+implicit in the softmax Jacobian (Ch.~16) collapses to a vector subtraction. One subtraction per output
+unit replaces a $K \times K$ matvec.
+\end{proof}
+
+\begin{theorem}[Binary CE + sigmoid gradient]
+For $\ell(z, y) = -y\log \sigma(z) - (1-y)\log(1-\sigma(z))$, $\partial \ell/\partial z = \sigma(z) - y$.
+\end{theorem}
+\begin{proof}
+Use $\log \sigma(z) = -\log(1+e^{-z})$ and $\log(1-\sigma(z)) = -z - \log(1+e^{-z})$, so
+$\ell = (1-y)\,z + \log(1+e^{-z})$. Differentiating,
+\[
+\frac{\partial \ell}{\partial z} \;=\; (1-y) - \frac{e^{-z}}{1+e^{-z}} \;=\; (1-y) - (1-\sigma(z)) \;=\; \sigma(z) - y. \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[CE minimum at $\hat p = y$]
+Treating $y, \hat p \in \Delta^{K-1}$ as distributions, $H(y, \hat p)$ is minimized over $\hat p$ at
+$\hat p = y$.
+\end{theorem}
+\begin{proof}
+$H(y, \hat p) - H(y, y) = -\sum_k y_k \log(\hat p_k / y_k) = D_{\mathrm{KL}}(y \,\|\, \hat p) \ge 0$ by
+Gibbs' inequality (Ch.~11), with equality iff $\hat p = y$.
+\end{proof}
+
+\subsection*{Code sketch}
+
+\begin{verbatim}
+def softmax_ce_with_logits(z, c):
+    z = z - z.max()
+    lse = np.log(np.exp(z).sum())
+    loss = -z[c] + lse
+    p = np.exp(z - lse)
+    grad = p.copy(); grad[c] -= 1.0      # p - y
+    return loss, grad
+\end{verbatim}
+
+The forward and backward share the cached softmax; the backward is a single in-place subtraction.
+
+\subsection*{Connection to LLMs}
+
+A causal language model (Ch.~25) emits, at every position $t$, logits $z_t \in \mathbb{R}^V$ over a
+vocabulary of size $V$. The training objective on a sequence $x_1, \dots, x_T$ is
+\[
+\mathcal{L}(\theta) \;=\; \sum_{t=1}^{T} -\log p_\theta(x_t \mid x_{<t}) \;=\; \sum_{t=1}^{T} \ell(z_t, x_t),
+\]
+i.e.\ cross-entropy with logits, summed across positions. By Theorem~4, the gradient at the output layer is
+$\hat p_t - y_t$ at every position --- a single subtraction per token per vocabulary entry. This signal
+flows backwards through the unembedding, the transformer blocks (Ch.~27 forward), and into the token
+embeddings. With $V \approx 10^5$, evaluating the softmax Jacobian explicitly would be prohibitive; the
+$\hat p - y$ collapse is what makes large-scale language modeling computationally feasible.
+
+\begin{remark}
+The pattern ``output-side gradient = prediction $-$ target'' generalizes well beyond softmax-CE and
+sigmoid-BCE: it is the canonical gradient for any \emph{matched} pairing of an exponential-family likelihood
+with its natural-parameter activation (a fact we will revisit when discussing conjugate priors and
+generalized linear models).
+\end{remark}

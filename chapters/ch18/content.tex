@@ -1,0 +1,146 @@
+\subsection*{Motivation}
+
+Chapter 17 ended with a clean fact: for softmax + cross-entropy, the gradient
+of the loss with respect to the pre-softmax logits is $\hat p - y$. That gives
+us the \emph{output-layer} gradient. To train an actual network we need the
+gradient of the loss with respect to \emph{every} parameter. Symbolic
+differentiation produces expressions whose size explodes exponentially with
+depth; finite differences over $P$ parameters cost $O(P)$ forward passes,
+prohibitive when $P\!\approx\!10^{11}$. Backpropagation solves both: it is the
+multivariate chain rule (Ch.~4) applied along a DAG in the right order.
+
+\subsection*{Computational graphs and AD}
+
+\begin{definition}[Computational graph]
+A \emph{computational graph} is a DAG whose nodes are intermediate values
+$v_i\in\mathbb{R}^{d_i}$ and whose edges are elementary operations. Source
+nodes are inputs; sink nodes are outputs. A \emph{forward pass} computes
+all $v_i$ in topological order given the inputs.
+\end{definition}
+
+\begin{definition}[Forward-mode AD / JVP]
+Given a tangent $\dot x$, forward-mode AD propagates
+$\dot v_i = \sum_{j\in\mathrm{parents}(i)} (\partial v_i/\partial v_j)\,\dot v_j$
+in topological order. One sweep evaluates $J\dot x$. Cost: one sweep per
+\emph{input} dimension.
+\end{definition}
+
+\begin{definition}[Reverse-mode AD / VJP]
+Given a cotangent $\bar y$ at the output, reverse-mode AD propagates
+\emph{adjoints} $\bar v_i$ in reverse topological order:
+\[
+  \bar v_j \;=\; \sum_{i\in\mathrm{children}(j)}
+   \Bigl(\frac{\partial v_i}{\partial v_j}\Bigr)^{\!T}\!\bar v_i.
+\]
+One sweep evaluates $J^{T}\bar y$. Cost: one sweep per \emph{output}
+dimension. For a scalar loss $L$, a single backward pass yields $\nabla_x L$;
+the adjoint $\bar v_i := \partial L/\partial v_i$ is the central object of
+backprop.
+\end{definition}
+
+\subsection*{The backprop theorem}
+
+\begin{theorem}[Backprop $=$ reverse-mode AD on a feedforward net]
+Let $L(x)=\ell(h^{(L)})$ where $h^{(\ell)}=f^{(\ell)}(h^{(\ell-1)})$,
+$h^{(0)}=x$, and each $f^{(\ell)}$ is differentiable with Jacobian
+$J^{(\ell)} := \partial f^{(\ell)}/\partial h^{(\ell-1)}$. Define adjoints
+$\bar h^{(\ell)} := \partial L/\partial h^{(\ell)}$. Then
+\[
+  \bar h^{(L)} \;=\; \nabla\ell(h^{(L)}),
+  \qquad
+  \bar h^{(\ell-1)} \;=\; \bigl(J^{(\ell)}\bigr)^{T} \bar h^{(\ell)}.
+\]
+\end{theorem}
+
+\begin{proof}
+By the multivariate chain rule (Ch.~4), for any $\ell$,
+\[
+  \frac{\partial L}{\partial h^{(\ell-1)}}
+  \;=\; \frac{\partial L}{\partial h^{(\ell)}}\cdot\frac{\partial h^{(\ell)}}{\partial h^{(\ell-1)}}
+  \;=\; \bar h^{(\ell)}\,J^{(\ell)},
+\]
+which transposed gives the adjoint recurrence. The base case is the gradient
+of $\ell$ at $h^{(L)}$. Induction over $\ell=L,L-1,\dots,1$.
+\end{proof}
+
+\begin{remark}
+For Ch.~17's softmax+cross-entropy block, $\bar h^{(L)}=\hat p-y$ is the base
+case; the recurrence does the rest.
+\end{remark}
+
+\subsection*{VJPs for an MLP layer}
+
+\begin{proposition}[MLP layer VJPs]
+For $z^{(\ell)}=W^{(\ell)}h^{(\ell-1)}+b^{(\ell)}$, $h^{(\ell)}=\sigma(z^{(\ell)})$
+with elementwise $\sigma$,
+\[
+  \bar z^{(\ell)} \;=\; \bar h^{(\ell)} \odot \sigma'(z^{(\ell)}),
+\quad
+  \bar W^{(\ell)} \;=\; \bar z^{(\ell)} (h^{(\ell-1)})^{T},
+\quad
+  \bar b^{(\ell)} \;=\; \bar z^{(\ell)},
+\quad
+  \bar h^{(\ell-1)} \;=\; (W^{(\ell)})^{T}\bar z^{(\ell)}.
+\]
+\end{proposition}
+
+\begin{proof}
+The chain rule gives
+$\bar z^{(\ell)}_i = \sum_k \bar h^{(\ell)}_k\,\partial h^{(\ell)}_k/\partial z^{(\ell)}_i
+ = \bar h^{(\ell)}_i\,\sigma'(z^{(\ell)}_i)$
+since $\sigma$ is elementwise. For $W$, $z_i = \sum_j W_{ij} h^{(\ell-1)}_j$ so
+$\partial z_i/\partial W_{kj}=\delta_{ik}h^{(\ell-1)}_j$, hence
+$\bar W_{kj}=\bar z_k h^{(\ell-1)}_j$, an outer product. The bias is
+$\partial z_i/\partial b_j=\delta_{ij}$. For $h^{(\ell-1)}$,
+$\partial z_i/\partial h^{(\ell-1)}_j=W_{ij}$, giving
+$\bar h^{(\ell-1)}=W^{T}\bar z^{(\ell)}$.
+\end{proof}
+
+\subsection*{Cost and memory}
+
+\begin{theorem}[Baur--Strassen]
+For a function defined by $K$ elementary operations with bounded fan-out, the
+gradient can be computed in arithmetic cost at most $\sim 5K$ — i.e.\ the
+backward pass costs only a small constant times the forward pass,
+\emph{independent of the number of parameters $P$}.
+\end{theorem}
+
+This is the magic. We pay a constant overhead, not a $P$-fold one, to
+differentiate with respect to all $P$ parameters simultaneously. Forward-mode
+AD does the opposite: $O(n)$ for $n$ inputs, $O(1)$ in outputs.
+
+\begin{remark}[Memory]
+The recurrence $\bar h^{(\ell-1)}=(J^{(\ell)})^{T}\bar h^{(\ell)}$ requires
+evaluating $J^{(\ell)}$, which typically depends on the forward activation
+$h^{(\ell-1)}$ (e.g.\ via $\sigma'(z^{(\ell)})$). Hence reverse-mode AD must
+\emph{cache every intermediate activation} produced during the forward pass,
+giving memory cost $O(L)$ in depth times batch and width. This is exactly the
+constraint that motivates \emph{gradient checkpointing} (Ch.~27): drop
+activations and recompute them on backward, trading compute for memory.
+\end{remark}
+
+\subsection*{Code sketch}
+
+\begin{example}[Two-line backward for an MLP layer]
+\begin{verbatim}
+def linear_vjp(W, h_in, dz):
+    return dz @ h_in.T, dz, W.T @ dz   # dW, db, dh_in
+
+def tanh_vjp(z, dh):
+    return dh * (1.0 - np.tanh(z)**2)
+\end{verbatim}
+The full backward pass over $L$ layers is $L$ applications of these two VJPs in
+reverse, threading the adjoint $\bar h^{(\ell)}$ through.
+\end{example}
+
+\subsection*{Connection to LLMs}
+
+A modern transformer has $L\in[12,96]$ blocks, each composed of attention and
+MLP sub-layers. One training step is: (i) forward pass through all $L$
+blocks, caching activations; (ii) reverse-mode AD computing $\nabla_\theta L$
+for every parameter (often $\theta\in\mathbb{R}^{10^{11}}$) in time $\le 5\times$
+the forward pass — Baur--Strassen in action; (iii) optimizer step. The
+per-token activation memory is the dominant scaling constraint and is exactly
+why frameworks ship gradient checkpointing, FlashAttention recomputation
+(Ch.~23), and ZeRO-style sharding by default. Every parameter update in a
+175B model is the adjoint recurrence above, executed billions of times.

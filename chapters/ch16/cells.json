@@ -1,0 +1,219 @@
+[
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Activation functions: ReLU/GELU/softmax with derivatives\n",
+      "\n",
+      "Without a pointwise nonlinearity, a stack of affine layers (Chapter 15) collapses to a single affine map. The choice of activation governs (i) what gradient signal flows through backpropagation (Chapter 3), (ii) the geometry of hidden activations, and (iii) numerical conditioning. We study five activations:\n",
+      "\n",
+      "- **Sigmoid**: $\\sigma(x) = 1/(1+e^{-x})$\n",
+      "- **Tanh**: $\\tanh(x) = (e^x - e^{-x})/(e^x + e^{-x}) = 2\\sigma(2x) - 1$\n",
+      "- **ReLU**: $\\max(0, x)$\n",
+      "- **GELU**: $x\\,\\Phi(x)$ with $\\Phi$ the standard-normal CDF\n",
+      "- **Softmax**: $z \\mapsto e^{z}/\\sum_k e^{z_k}$ (vector-valued)\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "import numpy as np\n",
+      "from math import erf, sqrt, pi\n",
+      "np.random.seed(0)\n",
+      "\n",
+      "def sigmoid(x): return 1.0 / (1.0 + np.exp(-x))\n",
+      "def tanh(x):    return np.tanh(x)\n",
+      "def relu(x):    return np.maximum(0.0, x)\n",
+      "def Phi(x):     return 0.5 * (1.0 + np.vectorize(erf)(x / sqrt(2)))\n",
+      "def gelu(x):    return x * Phi(x)\n",
+      "\n",
+      "xs = np.linspace(-4, 4, 200)\n",
+      "acts = {'sigmoid': sigmoid, 'tanh': tanh, 'relu': relu, 'gelu': gelu}\n",
+      "\n",
+      "try:\n",
+      "    import matplotlib.pyplot as plt\n",
+      "    fig, ax = plt.subplots(figsize=(7, 4))\n",
+      "    for name, f in acts.items():\n",
+      "        ax.plot(xs, f(xs), label=name)\n",
+      "    ax.axhline(0, color='k', lw=0.5); ax.axvline(0, color='k', lw=0.5)\n",
+      "    ax.legend(); ax.set_title('Activations on [-4, 4]')\n",
+      "    plt.tight_layout(); plt.show()\n",
+      "except Exception as e:\n",
+      "    print('matplotlib unavailable, skipping plot:', e)\n",
+      "\n",
+      "print(f\"\\n{'x':>6} {'sigmoid':>10} {'tanh':>10} {'relu':>10} {'gelu':>10}\")\n",
+      "for x in [-2.0, -1.0, 0.0, 1.0, 2.0]:\n",
+      "    row = [f(np.array(x)).item() for f in acts.values()]\n",
+      "    print(f\"{x:>6.1f} {row[0]:>10.4f} {row[1]:>10.4f} {row[2]:>10.4f} {row[3]:>10.4f}\")\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Derivatives and saturation\n",
+      "\n",
+      "From Chapter 3:\n",
+      "\n",
+      "- $\\sigma'(x) = \\sigma(x)(1-\\sigma(x))$ (quotient rule)\n",
+      "- $\\tanh'(x) = 1 - \\tanh^2(x)$ (chain rule via $\\tanh = 2\\sigma(2x)-1$)\n",
+      "- $\\mathrm{ReLU}'(x) = \\mathbf{1}_{x>0}$ a.e.; subgradient $[0,1]$ at $x=0$\n",
+      "- $\\mathrm{GELU}'(x) = \\Phi(x) + x\\,\\phi(x)$ (product rule, $\\Phi'=\\phi$)\n",
+      "\n",
+      "Sigmoid and tanh saturate (derivative $\\to 0$) for $|x|$ large, causing vanishing gradients in deep nets. ReLU has zero gradient on $x<0$ — the dead-neuron risk. GELU is smooth, near-linear for $x \\gg 0$, smoothly zero for $x \\ll 0$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def phi_pdf(x): return np.exp(-0.5 * x * x) / np.sqrt(2 * np.pi)\n",
+      "\n",
+      "# Analytic derivatives\n",
+      "def dsigmoid(x): s = sigmoid(x); return s * (1 - s)\n",
+      "def dtanh(x):    t = tanh(x);    return 1 - t * t\n",
+      "def drelu(x):    return (x > 0).astype(float)\n",
+      "def dgelu(x):    return Phi(x) + x * phi_pdf(x)\n",
+      "\n",
+      "# Centered finite difference\n",
+      "def fd(f, x, h=1e-5):\n",
+      "    return (f(x + h) - f(x - h)) / (2 * h)\n",
+      "\n",
+      "checks = [('sigmoid', sigmoid, dsigmoid),\n",
+      "          ('tanh',    tanh,    dtanh),\n",
+      "          ('relu',    relu,    drelu),     # we'll skip x=0\n",
+      "          ('gelu',    gelu,    dgelu)]\n",
+      "test_xs = np.array([-2.5, -1.0, -0.3, 0.5, 1.0, 2.5])\n",
+      "print(f\"{'name':>8} {'x':>6} {'analytic':>12} {'fd':>12} {'|diff|':>12}\")\n",
+      "for name, f, df in checks:\n",
+      "    for x in test_xs:\n",
+      "        a = float(df(np.array(x)))\n",
+      "        n = float(fd(f, np.array(x)))\n",
+      "        print(f\"{name:>8} {x:>6.2f} {a:>12.6f} {n:>12.6f} {abs(a-n):>12.2e}\")\n",
+      "\n",
+      "try:\n",
+      "    import matplotlib.pyplot as plt\n",
+      "    fig, ax = plt.subplots(figsize=(7, 4))\n",
+      "    for name, _, df in checks:\n",
+      "        ax.plot(xs, df(xs), label=f\"{name}'\")\n",
+      "    ax.axhline(0, color='k', lw=0.5); ax.legend()\n",
+      "    ax.set_title('Derivatives — sigmoid/tanh saturate; ReLU is a step; GELU is smooth')\n",
+      "    plt.tight_layout(); plt.show()\n",
+      "except Exception as e:\n",
+      "    print('matplotlib unavailable:', e)\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Softmax Jacobian\n",
+      "\n",
+      "$$\\frac{\\partial s_i}{\\partial z_j} = s_i(\\delta_{ij} - s_j), \\qquad J = \\mathrm{diag}(s) - s s^\\top.$$\n",
+      "\n",
+      "Quotient-rule proof: for $s_i = e^{z_i}/S$ with $S=\\sum_k e^{z_k}$, $\\partial s_i/\\partial z_j = (\\delta_{ij} e^{z_i} S - e^{z_i} e^{z_j})/S^2 = \\delta_{ij} s_i - s_i s_j$.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "def softmax(z):\n",
+      "    z = np.asarray(z, dtype=float)\n",
+      "    z = z - z.max()           # numerical stability — see next section\n",
+      "    e = np.exp(z)\n",
+      "    return e / e.sum()\n",
+      "\n",
+      "def softmax_jacobian(z):\n",
+      "    s = softmax(z)\n",
+      "    return np.diag(s) - np.outer(s, s)\n",
+      "\n",
+      "def numerical_jacobian(f, z, h=1e-5):\n",
+      "    z = np.asarray(z, dtype=float)\n",
+      "    n = z.size\n",
+      "    J = np.zeros((n, n))\n",
+      "    for j in range(n):\n",
+      "        ej = np.zeros(n); ej[j] = h\n",
+      "        J[:, j] = (f(z + ej) - f(z - ej)) / (2 * h)\n",
+      "    return J\n",
+      "\n",
+      "z = np.array([1.0, 0.5, -1.0, 2.0])\n",
+      "J_an = softmax_jacobian(z)\n",
+      "J_nu = numerical_jacobian(softmax, z)\n",
+      "print('softmax(z) =', softmax(z))\n",
+      "print('Analytic Jacobian =\\n', np.round(J_an, 6))\n",
+      "print('Numerical Jacobian =\\n', np.round(J_nu, 6))\n",
+      "print('max |analytic - numerical| =', np.max(np.abs(J_an - J_nu)))\n",
+      "print('Symmetric?', np.allclose(J_an, J_an.T))\n",
+      "print('J @ ones =', J_an @ np.ones_like(z), '(should be ~0 by translation invariance)')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Temperature\n",
+      "\n",
+      "$\\mathrm{softmax}(z/T)$: as $T \\to 0^+$, mass concentrates on $\\arg\\max$; as $T \\to \\infty$, distribution becomes uniform. This is the standard sampling knob in LLM decoding (Chapter 25).\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "z = np.array([2.0, 1.0, 0.5, -0.3, -1.0])\n",
+      "print('logits:', z, '   argmax index:', int(np.argmax(z)))\n",
+      "for T in [0.1, 1.0, 5.0, 100.0]:\n",
+      "    p = softmax(z / T)\n",
+      "    print(f\"T={T:>6.2f}: {np.round(p, 4)}   (sum={p.sum():.4f})\")\n",
+      "print('\\nLimits:')\n",
+      "print('  T -> 0  : approaches one-hot at argmax')\n",
+      "print('  T -> inf: approaches uniform (1/n =', 1/len(z), ')')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  },
+  {
+    "cell_type": "markdown",
+    "metadata": {},
+    "source": [
+      "## Numerical stability\n",
+      "\n",
+      "$\\mathrm{softmax}(z) = \\mathrm{softmax}(z - \\max_i z_i)$. Without subtracting the max, $\\exp(1002)$ overflows to `inf` and the result is `nan`.\n"
+    ]
+  },
+  {
+    "cell_type": "code",
+    "metadata": {},
+    "source": [
+      "z = np.array([1000.0, 1001.0, 1002.0])\n",
+      "\n",
+      "# Naive softmax — overflows\n",
+      "with np.errstate(over='ignore', invalid='ignore'):\n",
+      "    e_naive = np.exp(z)\n",
+      "    p_naive = e_naive / e_naive.sum()\n",
+      "print('Naive exp(z) =', e_naive)\n",
+      "print('Naive softmax =', p_naive)\n",
+      "\n",
+      "# Stabilized — subtract max\n",
+      "p_stable = softmax(z)\n",
+      "print('Stabilized softmax =', np.round(p_stable, 4))\n",
+      "expected = np.array([0.0900, 0.2447, 0.6652])\n",
+      "print('Expected            =', expected)\n",
+      "print('max |diff| =', np.max(np.abs(p_stable - expected)))\n",
+      "\n",
+      "# Log-sum-exp identity: log sum exp(z) = max(z) + log sum exp(z - max(z))\n",
+      "lse = z.max() + np.log(np.exp(z - z.max()).sum())\n",
+      "print('log-sum-exp(z) =', lse, '   (~ max(z) + log(1+e+e^2) = 1002 + log(1+e+e^2))')\n"
+    ],
+    "execution_count": null,
+    "outputs": []
+  }
+]

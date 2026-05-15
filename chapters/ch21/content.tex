@@ -1,0 +1,128 @@
+\subsection*{Motivation}
+
+Chapter~20 closed with a sharp negative result: a recurrent network propagates gradients between tokens $j$ and $i$ through $|i-j|$ multiplicative steps, so $\|\partial h_i/\partial h_j\|$ shrinks or grows geometrically. Long-range dependencies become statistically unreachable. We now construct a primitive that links every output position to every input position through a \emph{single} matrix multiplication, so the gradient between any pair of tokens travels in $O(1)$ depth: \textbf{scaled dot-product attention}~\cite{Vaswani2017}.
+
+\subsection*{Definitions}
+
+Let $X \in \mathbb{R}^{T \times d_{\mathrm{model}}}$ be a sequence of $T$ token vectors, e.g.\ embeddings from Chapter~19. Fix projection matrices
+\[
+W_Q, W_K \in \mathbb{R}^{d_{\mathrm{model}} \times d_k}, \qquad W_V \in \mathbb{R}^{d_{\mathrm{model}} \times d_v},
+\]
+and define the \textbf{queries}, \textbf{keys}, and \textbf{values}
+\[
+Q = X W_Q, \qquad K = X W_K, \qquad V = X W_V.
+\]
+These are linear maps in the sense of Chapter~5.
+
+\begin{definition}[Scaled dot-product attention]
+\label{def:sdpa}
+\[
+\boxed{\,\mathrm{Attn}(Q,K,V) \;=\; \mathrm{softmax}\!\left(\frac{Q K^\top}{\sqrt{d_k}}\right) V.\,}
+\]
+The softmax (Chapter~16) is applied row-wise. We write
+\[
+A \;:=\; \mathrm{softmax}\!\left(\tfrac{QK^\top}{\sqrt{d_k}}\right) \in \mathbb{R}^{T \times T}
+\]
+for the \emph{attention weights}. Each row $A_{i,:}$ is a probability vector: $A_{ij} \ge 0$ and $\sum_j A_{ij} = 1$.
+\end{definition}
+
+\begin{definition}[Self- vs.\ cross-attention]
+When $Q,K,V$ are all derived from the same source $X$, Definition~\ref{def:sdpa} is called \emph{self-attention}. When $Q$ comes from a sequence $X$ but $K,V$ come from a different sequence $Y$ (e.g.\ encoder outputs in a seq-to-seq model), it is \emph{cross-attention}.
+\end{definition}
+
+\subsection*{Theorems}
+
+\begin{theorem}[Attention as a soft database lookup]
+For each query index $i$, the output row $\mathrm{Attn}(Q,K,V)_i$ is a convex combination of the value rows $V_1, \dots, V_T$.
+\end{theorem}
+\begin{proof}
+By Chapter~16, $A_{i,:}$ is the image of a softmax, hence $A_{ij} \in (0,1)$ and $\sum_j A_{ij} = 1$. Therefore
+\[
+(AV)_i \;=\; \sum_{j=1}^{T} A_{ij}\, V_j \;\in\; \mathrm{conv}\{V_1, \dots, V_T\}. \qedhere
+\]
+\end{proof}
+
+\begin{theorem}[Variance of dot products and the $\sqrt{d_k}$ scaling]
+\label{thm:variance}
+Suppose the entries of $Q_{i,:}$ and $K_{j,:}$ are i.i.d., mean zero, variance $1$, and the two vectors are independent. Then
+\[
+\mathbb{E}\bigl[Q_i \cdot K_j\bigr] = 0, \qquad \mathrm{Var}\bigl(Q_i \cdot K_j\bigr) = d_k.
+\]
+Consequently $\bigl(QK^\top\bigr)_{ij}/\sqrt{d_k}$ has unit variance.
+\end{theorem}
+\begin{proof}
+Write
+\[
+S \;=\; Q_i \cdot K_j \;=\; \sum_{k=1}^{d_k} Q_{ik} K_{jk}.
+\]
+By linearity of expectation and independence,
+\[
+\mathbb{E}[S] = \sum_{k=1}^{d_k} \mathbb{E}[Q_{ik}]\,\mathbb{E}[K_{jk}] = 0.
+\]
+For the second moment, expand
+\[
+S^2 = \sum_{k=1}^{d_k} Q_{ik}^2 K_{jk}^2 \;+\; \sum_{k \neq k'} Q_{ik} K_{jk} Q_{ik'} K_{jk'}.
+\]
+The diagonal terms satisfy $\mathbb{E}[Q_{ik}^2 K_{jk}^2] = \mathbb{E}[Q_{ik}^2]\,\mathbb{E}[K_{jk}^2] = 1\cdot 1 = 1$. The off-diagonal terms factor (by independence across $k$ and across $Q,K$) into products of zero means, hence vanish in expectation. Therefore
+\[
+\mathrm{Var}(S) = \mathbb{E}[S^2] - 0 = d_k. \qedhere
+\]
+\end{proof}
+
+\begin{corollary}[Saturation without scaling]
+Without the $1/\sqrt{d_k}$ factor, the logits feeding softmax have standard deviation $\sqrt{d_k} \to \infty$. The maximum logit dominates and softmax concentrates on a single index $j^\star$. Since $\partial \mathrm{softmax}_i/\partial s_j = \mathrm{softmax}_i(\delta_{ij} - \mathrm{softmax}_j)$, the Jacobian collapses to (approximately) the zero matrix off $j^\star$, vanishing gradients with respect to $Q$ and $K$.
+\end{corollary}
+
+\begin{remark}
+Scaling by $1/\sqrt{d_k}$ is therefore a \emph{temperature normalization}. It keeps softmax in the well-conditioned regime where its Jacobian has rank $T-1$ and gradients propagate informatively through every position.
+\end{remark}
+
+\begin{theorem}[Permutation equivariance]
+Let $\pi \in S_T$ be a permutation of the sequence axis, with permutation matrix $P_\pi$. Then
+\[
+\mathrm{Attn}(P_\pi Q,\, P_\pi K,\, P_\pi V) \;=\; P_\pi \, \mathrm{Attn}(Q, K, V).
+\]
+\end{theorem}
+\begin{proof}
+The pre-softmax logits transform as
+\[
+\bigl(P_\pi Q\bigr)\bigl(P_\pi K\bigr)^\top / \sqrt{d_k} \;=\; P_\pi \bigl(QK^\top / \sqrt{d_k}\bigr) P_\pi^\top.
+\]
+Row-wise softmax acts independently on each row, and the column permutation $P_\pi^\top$ on the right merely reorders the entries within each row, so the softmax permutes consistently:
+\[
+A' := \mathrm{softmax}\bigl(P_\pi (QK^\top/\sqrt{d_k}) P_\pi^\top\bigr) = P_\pi A P_\pi^\top.
+\]
+Multiplying by the permuted values,
+\[
+A' (P_\pi V) = P_\pi A P_\pi^\top P_\pi V = P_\pi A V,
+\]
+since $P_\pi^\top P_\pi = I$. \qedhere
+\end{proof}
+
+\begin{remark}
+This symmetry is \emph{too strong} for natural language: attention cannot distinguish ``the cat sat'' from ``sat cat the''. Chapter~24 fixes this by injecting positional information into $X$ before the projections.
+\end{remark}
+
+\begin{theorem}[$O(1)$ gradient depth between any two tokens]
+\label{thm:O1grad}
+For any pair of indices $i,j$,
+\[
+\frac{\partial (AV)_i}{\partial V_j} \;=\; A_{ij} \, I_{d_v},
+\]
+which has spectral norm $A_{ij} \in (0,1)$, independent of $|i - j|$.
+\end{theorem}
+\begin{proof}
+$(AV)_i = \sum_{\ell=1}^{T} A_{i\ell} V_\ell$, so $\partial (AV)_i/\partial V_j = A_{ij} I_{d_v}$. \qedhere
+\end{proof}
+
+\begin{remark}
+Compare to Chapter~20: an RNN with spectral norm $\rho$ satisfies $\|\partial h_i/\partial h_j\| \lesssim \rho^{|i-j|}$, exponentially small for $\rho < 1$. Attention replaces this exponential dependence by a single matmul, paying $O(T^2 d_k)$ compute for the matrix $A$.
+\end{remark}
+
+\subsection*{Connection to LLMs}
+
+Scaled dot-product attention is \emph{the} primitive of every transformer language model. Chapter~22 stacks $h$ heads of it in parallel (multi-head attention); Chapter~23 wires attention into the residual + MLP transformer block; Chapter~24 repairs the permutation symmetry of Theorem~4 with positional encodings. Production-scale variants --- Flash Attention (IO-aware tiling), multi-query and grouped-query attention (sharing $K,V$ across heads), sliding-window and linear attention --- all preserve the scaled-softmax form derived here. Whenever you call an LLM, every token-to-token interaction inside it is an instance of $\mathrm{softmax}(QK^\top/\sqrt{d_k})V$.
+
+\begin{thebibliography}{1}
+\bibitem{Vaswani2017} A.~Vaswani et al. \emph{Attention Is All You Need}. NeurIPS, 2017.
+\end{thebibliography}
