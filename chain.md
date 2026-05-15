@@ -51,6 +51,11 @@ An unbroken chain of derivation from set theory to modern large language models.
 ### G — Post-training
 - [Chapter 28: SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT](#chapter-28-sft-rlhf-ppogrpo-and-dpo-train-post-train-a-tiny-gpt)
 
+### H — Reinforcement Learning
+- [Chapter 29: MDP foundations: Bellman equations, value iteration, tabular Q-learning](#chapter-29-mdp-foundations-bellman-equations-value-iteration-tabular-q-learning)
+- [Chapter 30: Value-based deep RL: function approximation, DQN, max-entropy framework](#chapter-30-value-based-deep-rl-function-approximation-dqn-max-entropy-framework)
+- [Chapter 31: Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop](#chapter-31-policy-gradient-grpo-and-the-rlhfdpo-bridge-tiny-gpt-alignment-loop)
+
 <!-- TOC END -->
 
 
@@ -2203,3 +2208,29 @@ We continue the tiny GPT of Chapter 27. The pipeline: (1) re-train briefly on a 
 InstructGPT (Ouyang 2022) introduced the SFT $\to$ RM $\to$ PPO recipe; GPT-3.5 / GPT-4, Claude 1/2/3, Llama-2-Chat, and Llama-3-Instruct all use a variant. DeepSeek-R1 (2024) replaced PPO with GRPO, dropping the critic. Zephyr, Tülu, and most open-weight chat models published after late 2023 use DPO (or its variants IPO, KTO, ORPO) because the closed-form derivation eliminates reward-model training, sampling, and credit assignment over long sequences. The KL leash to $\pi_{\mathrm{ref}}$ is what prevents post-training from destroying the capabilities laid down during pre-training (Chapter 27): post-training *re-shapes* a small region of the policy manifold around the SFT initialization rather than learning a new model from scratch.
 
 <!-- CHAPTER 28 END -->
+
+# Block H — Reinforcement Learning
+
+<!-- CHAPTER 29 START -->
+<a id="chapter-29-mdp-foundations-bellman-equations-value-iteration-tabular-q-learning"></a>
+## Chapter 29: MDP foundations: Bellman equations, value iteration, tabular Q-learning
+
+_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+
+<!-- CHAPTER 29 END -->
+
+<!-- CHAPTER 30 START -->
+<a id="chapter-30-value-based-deep-rl-function-approximation-dqn-max-entropy-framework"></a>
+## Chapter 30: Value-based deep RL: function approximation, DQN, max-entropy framework
+
+_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+
+<!-- CHAPTER 30 END -->
+
+<!-- CHAPTER 31 START -->
+<a id="chapter-31-policy-gradient-grpo-and-the-rlhf-dpo-bridge-tiny-gpt-alignment-loop"></a>
+## Chapter 31: Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop
+
+_(This chapter is currently a stub. It will contain Motivation, Definitions, Theorems and proofs, and Code and demonstration sections.)_
+
+<!-- CHAPTER 31 END -->

@@ -29,6 +29,9 @@
     { "id": 25, "title": "Causal masking; next-token prediction loss as MLE on the empirical distribution", "block": "F — Pre-training", "deps": [12, 17, 23, 24] },
     { "id": 26, "title": "Tokenization: BPE algorithm; greedy merge correctness", "block": "F — Pre-training", "deps": [1] },
     { "id": 27, "title": "Pre-training pipeline: AdamW + warmup + cosine decay + gradient clipping; tiny-GPT training run", "block": "F — Pre-training", "deps": [14, 25, 26] },
-    { "id": 28, "title": "SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT", "block": "G — Post-training", "deps": [27] }
+    { "id": 28, "title": "SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT", "block": "G — Post-training", "deps": [27] },
+    { "id": 29, "title": "MDP foundations: Bellman equations, value iteration, tabular Q-learning", "block": "H — Reinforcement Learning", "deps": [7, 8, 13] },
+    { "id": 30, "title": "Value-based deep RL: function approximation, DQN, max-entropy framework", "block": "H — Reinforcement Learning", "deps": [14, 16, 18, 29] },
+    { "id": 31, "title": "Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop", "block": "H — Reinforcement Learning", "deps": [11, 17, 25, 27, 28, 29, 30] }
   ]
 }
