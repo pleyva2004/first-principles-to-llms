@@ -3995,7 +3995,7 @@ Modern post-training is three coordinates on the same KL-regularized landscape:
     \item \textbf{GRPO.} PPO without the value network. Sample $G$ completions per prompt; baseline with the group mean; normalize by group std. Used by DeepSeek-Math and DeepSeek-R1. Pros: scales to verifiable rewards (math, code, format); no reward-model bottleneck. Cons: $G$ samples per prompt at training time.
 \end{itemize}
 
-The fellowship-level mental model: all three are surrogate optimizers of $J(\theta)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})$. RLHF estimates the gradient with PPO and a value function; DPO eliminates online sampling by inverting the closed-form solution; GRPO eliminates the value function via the group baseline. Pre-training (Chapter 27) is the floor — it sets what is sayable — and post-training reshapes only a small region around it. Pre-training is calorie intake; alignment is digestion. Every chapter in this 31-chapter chain composes to produce that final sentence.
+The unifying mental model: all three are surrogate optimizers of $J(\theta)-\beta D_{\mathrm{KL}}(\pi_\theta\|\pi_{\mathrm{ref}})$. RLHF estimates the gradient with PPO and a value function; DPO eliminates online sampling by inverting the closed-form solution; GRPO eliminates the value function via the group baseline. Pre-training (Chapter 27) is the floor — it sets what is sayable — and post-training reshapes only a small region around it. Pre-training is calorie intake; alignment is digestion. Every chapter in this 31-chapter chain composes to produce that final sentence.
 
 % --- CHAPTER 31 END ---
 

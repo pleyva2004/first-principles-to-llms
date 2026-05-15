@@ -580,7 +580,7 @@
     "        print(f'  {k:<18}: {v}')\n"
   ], "execution_count": null, "outputs": []},
   {"cell_type": "markdown", "metadata": {}, "source": [
-    "### Takeaways for fellowship interviews\n",
+    "### Takeaways\n",
     "\n",
     "- The policy gradient theorem is one log-derivative trick away from the RL objective; baselines are unbiased; GAE is the bias-variance dial.\n",
     "- TRPO bounds policy improvement by KL; PPO is its first-order surrogate via per-sample ratio clipping.\n",
