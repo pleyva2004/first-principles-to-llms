@@ -2,7 +2,7 @@
 
 [![Render](https://github.com/pleyva2004/first-principles-to-llms/actions/workflows/render.yml/badge.svg)](https://github.com/pleyva2004/first-principles-to-llms/actions/workflows/render.yml)
 
-An unbroken chain of derivation from set theory to modern large language models. Twenty-eight chapters carry the reader from sets, functions, and proofs through real and multivariable analysis, linear algebra, probability, information theory, and convex/stochastic optimization, into neural networks, attention, the transformer block, pre-training, and the modern post-training stack (SFT, RLHF/PPO/GRPO, DPO). Every step is presented with the same standard of rigor: definition, theorem, proof, code.
+An unbroken chain of derivation from set theory to modern large language models, then into the reinforcement-learning algorithms used to align them. Thirty-one chapters carry the reader from sets, functions, and proofs through real and multivariable analysis, linear algebra, probability, information theory, and convex/stochastic optimization, into neural networks, attention, the transformer block, pre-training, the post-training stack (SFT, RLHF, DPO), and finally the RL spine — MDPs, value-based methods, policy gradient, GRPO, and a runnable tiny-GPT alignment loop. Every step is presented with the same standard of rigor: definition, theorem, proof, code.
 
 ## Three forms
 
@@ -78,6 +78,14 @@ The same content lives in three synchronized forms. Pick the one that suits your
 | # | Chapter |
 | --- | --- |
 | 28 | SFT, RLHF (PPO/GRPO), and DPO; train + post-train a tiny GPT |
+
+### Block H — Reinforcement Learning
+
+| # | Chapter |
+| --- | --- |
+| 29 | MDP foundations: Bellman equations, value iteration, tabular Q-learning |
+| 30 | Value-based deep RL: function approximation, DQN, max-entropy framework |
+| 31 | Policy gradient, GRPO, and the RLHF/DPO bridge: tiny-GPT alignment loop |
 
 ## Build
 
