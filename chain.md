@@ -1,6 +1,6 @@
 # From First Principles to Modern Large Language Models
 
-**Author:** Paul Leyva
+**Author:** Pablo Leyva
 
 ## Abstract
 
