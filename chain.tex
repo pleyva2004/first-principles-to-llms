@@ -898,6 +898,24 @@ For $B \in \mathcal{F}$ with $\mathbb{P}(B) > 0$, the \emph{conditional probabil
 Events $A, B$ are \emph{independent} iff $\mathbb{P}(A \cap B) = \mathbb{P}(A)\,\mathbb{P}(B)$.
 \end{definition}
 
+\begin{definition}[Borel $\sigma$-algebra]
+\label{def:borel}
+The \emph{Borel $\sigma$-algebra} on $\mathbb{R}$, written $\mathcal{B}(\mathbb{R})$, is the smallest $\sigma$-algebra containing every open subset of $\mathbb{R}$. Elements of $\mathcal{B}(\mathbb{R})$ are called \emph{Borel sets}.
+\end{definition}
+
+\begin{proposition}[Existence of $\mathcal{B}(\mathbb{R})$]
+\label{prop:borel-exists}
+The intersection of an arbitrary family of $\sigma$-algebras on $\Omega$ is again a $\sigma$-algebra on $\Omega$. Hence $\mathcal{B}(\mathbb{R})$ is well-defined as the intersection of all $\sigma$-algebras on $\mathbb{R}$ that contain every open set.
+\end{proposition}
+
+\begin{proof}
+Let $\{\mathcal{F}_\alpha\}_{\alpha \in I}$ be any family of $\sigma$-algebras on $\Omega$, and set $\mathcal{F} := \bigcap_{\alpha} \mathcal{F}_\alpha$. We verify the three closure axioms. \emph{(i)} $\Omega \in \mathcal{F}_\alpha$ for every $\alpha$, so $\Omega \in \mathcal{F}$. \emph{(ii)} If $A \in \mathcal{F}$ then $A \in \mathcal{F}_\alpha$ for every $\alpha$, so $A^c \in \mathcal{F}_\alpha$ for every $\alpha$, so $A^c \in \mathcal{F}$. \emph{(iii)} If $A_1, A_2, \ldots \in \mathcal{F}$, then for each $\alpha$ the sequence lies in $\mathcal{F}_\alpha$, so $\bigcup_n A_n \in \mathcal{F}_\alpha$; hence $\bigcup_n A_n \in \mathcal{F}$. To apply this to $\mathcal{B}(\mathbb{R})$, note that the family of $\sigma$-algebras containing the open sets is non-empty since $2^\mathbb{R}$ is in it.
+\end{proof}
+
+\begin{remark}
+Borel sets include every open set, every closed set, every countable union of closed sets ($F_\sigma$), every countable intersection of open sets ($G_\delta$), and so on. In particular every interval $(a, b], [a, b], (a, b), (-\infty, x]$ is Borel. This is the natural $\sigma$-algebra against which random variables in Chapter~9 are measurable: $X^{-1}(B) \in \mathcal{F}$ for every $B \in \mathcal{B}(\mathbb{R})$.
+\end{remark}
+
 \subsection*{Elementary consequences}
 
 \begin{lemma}[Finite additivity, complement, monotonicity]
@@ -1418,6 +1436,52 @@ Combining the chain rule with the definition of $I$ yields the standard symmetri
 I(X; Y) = H(X) + H(Y) - H(X, Y) = H(Y) - H(Y \mid X) = H(X) - H(X \mid Y).
 \]
 Conditioning never increases entropy: $H(Y \mid X) \leq H(Y)$.
+\end{remark}
+
+\begin{definition}[Total variation distance]
+\label{def:tv}
+For two probability measures $P, Q$ on a measurable space $(\Omega, \mathcal{F})$,
+\[
+D_{TV}(P, Q) := \sup_{A \in \mathcal{F}} |P(A) - Q(A)|.
+\]
+For discrete distributions on a countable set $\mathcal{X}$, the supremum is attained on $A = \{x : P(x) \ge Q(x)\}$, giving the equivalent form
+\[
+D_{TV}(P, Q) = \tfrac{1}{2} \sum_{x} |P(x) - Q(x)| = \tfrac{1}{2}\|P - Q\|_1.
+\]
+\end{definition}
+
+\begin{theorem}[Pinsker's inequality]
+\label{thm:pinsker}
+For any two probability measures $P, Q$ on a common space with $Q$ absolutely continuous with respect to $P$ (so $D_{KL}(P \| Q)$ is finite),
+\[
+D_{TV}(P, Q) \;\le\; \sqrt{\tfrac{1}{2}\, D_{KL}(P \| Q)}.
+\]
+\end{theorem}
+
+\begin{proof}
+\textbf{Step 1 (Bernoulli case).} Define, for $p, q \in (0,1)$, the binary KL and TV
+\[
+  d(p \| q) := p \ln\tfrac{p}{q} + (1-p)\ln\tfrac{1-p}{1-q}, \qquad d_{TV}(p, q) := |p - q|.
+\]
+We claim $d(p \| q) \ge 2 (p-q)^2$ for all $p, q \in (0,1)$. Fix $q$ and let $\varphi(p) := d(p \| q) - 2(p - q)^2$. Then $\varphi(q) = 0$, $\varphi'(p) = \ln\tfrac{p}{q} - \ln\tfrac{1-p}{1-q} - 4(p-q)$, and
+\[
+  \varphi''(p) = \tfrac{1}{p(1-p)} - 4 \;\ge\; 4 - 4 = 0,
+\]
+since $p(1-p) \le 1/4$. So $\varphi$ is convex in $p$ with minimum at $p = q$ (because $\varphi'(q) = 0$ and $\varphi$ is convex), giving $\varphi(p) \ge 0$ for all $p$. Hence $d(p \| q) \ge 2 (p - q)^2$.
+
+\textbf{Step 2 (reduction to binary).} For any event $A \in \mathcal{F}$, set $p := P(A)$, $q := Q(A)$. Define a binary partition $\{A, A^c\}$ and consider the data-processing reduction: the map $\omega \mapsto \mathbf{1}\{\omega \in A\}$ pushes $P, Q$ to Bernoulli$(p)$ and Bernoulli$(q)$ respectively. By the data-processing inequality for KL divergence (which holds for any deterministic measurable map and follows directly from the log-sum inequality --- itself a consequence of Jensen applied to $\ln$),
+\[
+  D_{KL}(P \| Q) \;\ge\; d(p \| q).
+\]
+Combining with Step 1, $D_{KL}(P \| Q) \ge 2(p - q)^2 = 2 |P(A) - Q(A)|^2$. Take the supremum over $A$:
+\[
+  D_{KL}(P \| Q) \;\ge\; 2 \, D_{TV}(P, Q)^2,
+\]
+and rearrange to obtain the claimed inequality.
+\end{proof}
+
+\begin{remark}
+Pinsker's inequality is the tool that turns KL bounds (which information-theoretic objectives like RLHF's $D_{KL}(\pi \| \pi_{\mathrm{ref}})$ control) into TV bounds (which couple to performance differences). Chapter~31's TRPO surrogate-improvement inequality uses it to convert a per-state KL penalty into a bound on the difference between state-visitation distributions $d^\pi$ and $d^{\pi'}$.
 \end{remark}
 
 \subsection*{Code sketch}
@@ -3389,6 +3453,20 @@ L(\theta_{t+1}) \le L(\theta_t) - \eta_t\|\nabla L_t\|^2 + \tfrac{\beta}{2}\eta_
 At initialization $\beta$ is effectively unbounded along directions where pre-norm activations have not equilibrated; thus the second-order term dominates whenever $\eta_t > 2/\beta$. Ramping $\eta_t$ from $0$ keeps the second-order penalty controlled. Once LayerNorm scales and Adam's $v_t$ stabilize, $\beta$ shrinks and a larger $\eta_{\max}$ becomes safe.
 \end{theorem}
 
+\begin{proof}
+The descent lemma reads, as a quadratic in $\eta_t$,
+\[
+  L(\theta_{t+1}) - L(\theta_t) \;\le\; -\eta_t\|\nabla L_t\|^2 \left(1 - \tfrac{\beta \eta_t}{2}\right).
+\]
+The right-hand side is a strict decrease iff $\eta_t < 2/\beta$, with optimal step $\eta_t^* = 1/\beta$ giving decrease $-\tfrac{1}{2\beta}\|\nabla L_t\|^2$ (cf.\ Chapter~7). Hence any fixed schedule satisfying $\eta_t \le 2/\beta$ for every $t$ is monotone in expectation; conversely, $\eta_t > 2/\beta$ admits no descent guarantee and can yield an \emph{increase} in $L$.
+
+Let $\beta_t$ denote the effective smoothness at step $t$ along the directions the optimiser actually traverses. The empirical observation (Xiong et al., 2020; Liu et al., 2020) is that at initialisation $\beta_t$ is one to two orders of magnitude larger than its post-equilibration value $\beta_\infty$. The linear warmup $\eta_t = \eta_{\max}\,\min(1, t / W)$ satisfies
+\[
+  \eta_t \le \frac{2}{\beta_t} \quad\text{for all } t \le W,
+\]
+provided $W$ is chosen so that $\beta_t$ has decayed below $2/\eta_{\max}$ by step $W$. Inductively applying the descent lemma over $t = 0, 1, \ldots, W$ then gives $L(\theta_{W}) \le L(\theta_0)$, i.e.\ training has not diverged during the high-smoothness regime, after which the standard $\eta_t = \eta_{\max}$ phase enjoys $\eta_{\max} \le 2/\beta_\infty$ and the convex-side convergence rate of Chapter~7 applies. Without warmup, an initial step at the post-warmup learning rate violates the descent condition with probability driven by the distribution of $\beta_0$, accounting for the empirically observed early-training loss spikes.
+\end{proof}
+
 \begin{remark}
 RAdam (Liu et al.\ 2020) shows that Adam's variance estimate $\hat v_t$ has high variance for small $t$; warmup is essentially a poor man's variance correction.
 \end{remark}
@@ -3396,6 +3474,29 @@ RAdam (Liu et al.\ 2020) shows that Adam's variance estimate $\hat v_t$ has high
 \begin{theorem}[Cosine decay shrinks the noise ball]
 Near a minimum $\theta^\star$, a quadratic approximation $L(\theta)\approx\tfrac{1}{2}(\theta-\theta^\star)^\top H(\theta-\theta^\star)$ implies the SGD iterate variance scales as $\Theta(\eta\sigma^2)$. Decaying $\eta_t\to\eta_{\min}$ shrinks the noise ball, allowing convergence to a sharper minimum.
 \end{theorem}
+
+\begin{proof}
+Model the late-training dynamics near a local minimiser $\theta^\star$ by the SGD recursion on the quadratic $L(\theta) = \tfrac{1}{2}(\theta - \theta^\star)^\top H (\theta - \theta^\star)$ with $H \succ 0$ and unbiased mini-batch noise $\xi_t$ of covariance $\Sigma$:
+\[
+  \theta_{t+1} - \theta^\star = (I - \eta_t H)(\theta_t - \theta^\star) - \eta_t \xi_t.
+\]
+Let $u_t := \theta_t - \theta^\star$ and $\Lambda_t := \mathbb{E}[u_t u_t^\top]$. Taking outer products and using independence of $\xi_t$ from $u_t$,
+\[
+  \Lambda_{t+1} = (I - \eta_t H)\, \Lambda_t\, (I - \eta_t H) + \eta_t^2 \Sigma.
+\]
+For constant $\eta_t = \eta$, the stationary covariance $\Lambda_\infty$ solves the discrete Lyapunov equation $\Lambda_\infty = (I-\eta H)\Lambda_\infty(I-\eta H) + \eta^2 \Sigma$, whose first-order solution is
+\[
+  \Lambda_\infty \;=\; \tfrac{\eta}{2}\, H^{-1} \Sigma + O(\eta^2).
+\]
+Hence the stationary excess loss is $\mathbb{E}[L(\theta_\infty)] - L^\star = \tfrac{1}{2}\,\mathrm{tr}(H \Lambda_\infty) = \tfrac{\eta}{4}\,\mathrm{tr}(\Sigma) + O(\eta^2)$, linear in $\eta$. This is the noise-ball radius of Chapter~14: a constant step size cannot resolve features below $\Theta(\sqrt{\eta\,\mathrm{tr}(\Sigma)})$.
+
+The non-stationary case with $\eta_t \to 0$ gives a time-varying noise ball of radius $\Theta(\sqrt{\eta_t \,\mathrm{tr}(\Sigma) / \lambda_{\min}(H)})$ once $\eta_t$ has been below the mixing time of $(I - \eta H)$ for long enough. Comparing schedules with the same total budget $\int_0^T \eta_t \, dt$ (a proxy for total update magnitude):
+\begin{itemize}
+  \item \textbf{Step decay} (e.g.\ halve $\eta$ every $T/3$): the final third has $\eta = \eta_{\max}/8$, giving final noise ball $\Theta(\sqrt{\eta_{\max}/8})$.
+  \item \textbf{Cosine decay} $\eta_t = \tfrac{1}{2}\eta_{\max}(1 + \cos(\pi t/T))$: the integral over $t \in [T/2, T]$ contributes only $\eta_{\max} T / \pi^2$, i.e.\ the schedule spends a quadratically large fraction of its $\eta$-budget early when noise is helpful for escaping saddle points, and decays smoothly to $\eta_T = 0$, achieving the tightest possible final noise ball under the budget constraint.
+\end{itemize}
+Smoothness of the schedule (continuous $\dot\eta_t$, no discontinuities) also means $\Lambda_t$ tracks the moving stationary point $\tfrac{\eta_t}{2} H^{-1}\Sigma$ with $O(|\dot\eta_t|/\lambda_{\min}(H))$ lag, whereas step decay introduces transient bias of order $\eta_{\max}\|\theta_t - \theta^\star\|$ at each drop. The combination --- tightest terminal noise ball under fixed $\int \eta_t$, plus smooth tracking --- accounts for cosine's empirical advantage observed by Loshchilov \& Hutter (2017) and Smith (2017).
+\end{proof}
 
 \begin{remark}
 Empirically (Smith 2017, 1cycle; Loshchilov \& Hutter SGDR), cosine outperforms step- and exponential-decay across vision and language. Cosine in particular keeps $\eta$ near $\eta_{\max}$ during most of training (when exploration matters) and only collapses near the end.
@@ -3706,6 +3807,47 @@ If every $(s,a)$ is visited infinitely often and the per-pair step sizes obey th
 \begin{proof}[Sketch]
 The update is precisely the Robbins--Monro stochastic-approximation recursion for the fixed point of $\mathcal{T}^*$, which is a $\gamma$-contraction in sup norm. The sample $s_{t+1}\sim P(\cdot\mid s_t,a_t)$ replaces the expectation $\sum_{s'} P(s'\mid s,a)$ by an unbiased one-sample estimator, producing a martingale-difference noise with bounded variance (since rewards and $Q$ are bounded). Tsitsiklis' generalization of stochastic approximation to contraction operators gives almost-sure convergence under the stated step-size and visitation conditions.
 \end{proof}
+
+\begin{lemma}[Performance-difference; Kakade \& Langford, 2002]
+\label{lem:pdl}
+For any two policies $\pi, \pi'$ on the same MDP and any state $s_0$,
+\[
+  J(\pi') - J(\pi) \;=\; \frac{1}{1 - \gamma}\, \mathbb{E}_{(s, a) \sim d^{\pi'}, \pi'(\cdot \mid s)}\!\left[ A^\pi(s, a) \right],
+\]
+where $A^\pi(s, a) = Q^\pi(s, a) - V^\pi(s)$ is the advantage under $\pi$ and $d^{\pi'}(s) := (1 - \gamma) \sum_{t=0}^\infty \gamma^t \, \mathbb{P}^{\pi'}(s_t = s \mid s_0)$ is the discounted state-visitation distribution under $\pi'$.
+\end{lemma}
+
+\begin{proof}
+By definition, $J(\pi') = \mathbb{E}^{\pi'}\!\left[\sum_{t=0}^\infty \gamma^t r_t\right]$, where $\mathbb{E}^{\pi'}$ denotes expectation under trajectories generated by $\pi'$ starting from $s_0$. The proof is a telescoping identity that inserts $V^\pi$ at every step. For any state $s$, the Bellman expectation equation for $V^\pi$ states
+\[
+  V^\pi(s) = \mathbb{E}_{a \sim \pi(\cdot \mid s)}\!\left[ r(s, a) + \gamma\, \mathbb{E}_{s' \sim P(\cdot \mid s, a)} V^\pi(s') \right].
+\]
+We DO NOT use this directly; instead, observe the trivial identity
+\[
+  J(\pi) = V^\pi(s_0) = \mathbb{E}^{\pi'}[V^\pi(s_0)] = \mathbb{E}^{\pi'}\!\left[\,V^\pi(s_0) + \sum_{t=0}^\infty \gamma^t \bigl(\gamma\, V^\pi(s_{t+1}) - V^\pi(s_{t+1})\bigr)\right],
+\]
+where we appended a telescoping zero (each $V^\pi(s_{t+1})$ term cancels its scaled copy at step $t+1$, modulo a $\lim_{T\to\infty} \gamma^{T+1} V^\pi(s_{T+1}) = 0$ tail that vanishes since $V^\pi$ is bounded and $\gamma < 1$). Rearranging,
+\[
+  J(\pi) = \mathbb{E}^{\pi'}\!\left[\sum_{t=0}^\infty \gamma^t \bigl(V^\pi(s_t) - \gamma\, V^\pi(s_{t+1})\bigr) - V^\pi(s_0)\right] + V^\pi(s_0) = \mathbb{E}^{\pi'}\!\left[\sum_{t=0}^\infty \gamma^t \bigl(V^\pi(s_t) - \gamma V^\pi(s_{t+1})\bigr)\right].
+\]
+Subtracting from $J(\pi')$,
+\[
+  J(\pi') - J(\pi) = \mathbb{E}^{\pi'}\!\left[\sum_{t=0}^\infty \gamma^t \bigl(r_t + \gamma V^\pi(s_{t+1}) - V^\pi(s_t)\bigr)\right].
+\]
+Inside the expectation, condition on $(s_t, a_t)$: the inner expression is exactly $A^\pi(s_t, a_t)$, since
+\[
+  \mathbb{E}\!\left[r_t + \gamma V^\pi(s_{t+1}) \mid s_t, a_t\right] = Q^\pi(s_t, a_t),
+\]
+and $V^\pi(s_t)$ is $\sigma(s_t)$-measurable. Hence
+\[
+  J(\pi') - J(\pi) = \mathbb{E}^{\pi'}\!\left[\sum_{t=0}^\infty \gamma^t A^\pi(s_t, a_t)\right] = \frac{1}{1-\gamma} \, \mathbb{E}_{(s,a) \sim d^{\pi'}, \pi'}\!\left[A^\pi(s, a)\right],
+\]
+where the last equality folds the discount factor into the discounted state-visitation $d^{\pi'}$. \qedhere
+\end{proof}
+
+\begin{remark}
+The performance-difference lemma is the foundation of every \emph{conservative policy iteration} algorithm (Kakade \& Langford 2002), and via the next step --- replacing $d^{\pi'}$ by the on-policy $d^\pi$ and absorbing the substitution error into a KL penalty --- underlies TRPO and PPO (Chapter~31). It says exactly: the gain from switching $\pi \to \pi'$ is the expected $\pi$-advantage of $\pi'$'s actions, weighted by where $\pi'$ \emph{actually visits}.
+\end{remark}
 
 \subsection*{Code sketch}
 

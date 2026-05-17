@@ -127,6 +127,52 @@ I(X; Y) = H(X) + H(Y) - H(X, Y) = H(Y) - H(Y \mid X) = H(X) - H(X \mid Y).
 Conditioning never increases entropy: $H(Y \mid X) \leq H(Y)$.
 \end{remark}
 
+\begin{definition}[Total variation distance]
+\label{def:tv}
+For two probability measures $P, Q$ on a measurable space $(\Omega, \mathcal{F})$,
+\[
+D_{TV}(P, Q) := \sup_{A \in \mathcal{F}} |P(A) - Q(A)|.
+\]
+For discrete distributions on a countable set $\mathcal{X}$, the supremum is attained on $A = \{x : P(x) \ge Q(x)\}$, giving the equivalent form
+\[
+D_{TV}(P, Q) = \tfrac{1}{2} \sum_{x} |P(x) - Q(x)| = \tfrac{1}{2}\|P - Q\|_1.
+\]
+\end{definition}
+
+\begin{theorem}[Pinsker's inequality]
+\label{thm:pinsker}
+For any two probability measures $P, Q$ on a common space with $Q$ absolutely continuous with respect to $P$ (so $D_{KL}(P \| Q)$ is finite),
+\[
+D_{TV}(P, Q) \;\le\; \sqrt{\tfrac{1}{2}\, D_{KL}(P \| Q)}.
+\]
+\end{theorem}
+
+\begin{proof}
+\textbf{Step 1 (Bernoulli case).} Define, for $p, q \in (0,1)$, the binary KL and TV
+\[
+  d(p \| q) := p \ln\tfrac{p}{q} + (1-p)\ln\tfrac{1-p}{1-q}, \qquad d_{TV}(p, q) := |p - q|.
+\]
+We claim $d(p \| q) \ge 2 (p-q)^2$ for all $p, q \in (0,1)$. Fix $q$ and let $\varphi(p) := d(p \| q) - 2(p - q)^2$. Then $\varphi(q) = 0$, $\varphi'(p) = \ln\tfrac{p}{q} - \ln\tfrac{1-p}{1-q} - 4(p-q)$, and
+\[
+  \varphi''(p) = \tfrac{1}{p(1-p)} - 4 \;\ge\; 4 - 4 = 0,
+\]
+since $p(1-p) \le 1/4$. So $\varphi$ is convex in $p$ with minimum at $p = q$ (because $\varphi'(q) = 0$ and $\varphi$ is convex), giving $\varphi(p) \ge 0$ for all $p$. Hence $d(p \| q) \ge 2 (p - q)^2$.
+
+\textbf{Step 2 (reduction to binary).} For any event $A \in \mathcal{F}$, set $p := P(A)$, $q := Q(A)$. Define a binary partition $\{A, A^c\}$ and consider the data-processing reduction: the map $\omega \mapsto \mathbf{1}\{\omega \in A\}$ pushes $P, Q$ to Bernoulli$(p)$ and Bernoulli$(q)$ respectively. By the data-processing inequality for KL divergence (which holds for any deterministic measurable map and follows directly from the log-sum inequality --- itself a consequence of Jensen applied to $\ln$),
+\[
+  D_{KL}(P \| Q) \;\ge\; d(p \| q).
+\]
+Combining with Step 1, $D_{KL}(P \| Q) \ge 2(p - q)^2 = 2 |P(A) - Q(A)|^2$. Take the supremum over $A$:
+\[
+  D_{KL}(P \| Q) \;\ge\; 2 \, D_{TV}(P, Q)^2,
+\]
+and rearrange to obtain the claimed inequality.
+\end{proof}
+
+\begin{remark}
+Pinsker's inequality is the tool that turns KL bounds (which information-theoretic objectives like RLHF's $D_{KL}(\pi \| \pi_{\mathrm{ref}})$ control) into TV bounds (which couple to performance differences). Chapter~31's TRPO surrogate-improvement inequality uses it to convert a per-state KL penalty into a bound on the difference between state-visitation distributions $d^\pi$ and $d^{\pi'}$.
+\end{remark}
+
 \subsection*{Code sketch}
 
 The notebook builds two categorical distributions $p, q$ on a 5-token alphabet, implements \texttt{entropy}, \texttt{cross\_entropy}, and \texttt{kl} from the definitions above, and verifies $H(p, q) = H(p) + D_{\mathrm{KL}}(p \,\|\, q)$ to machine precision. It samples $50$ random Dirichlet pairs (seed $0$) and confirms $D_{\mathrm{KL}} \geq 0$ for every pair, with $D_{\mathrm{KL}}(p \,\|\, p) = 0$. For $K = 8$, it confirms $H(\text{uniform}) = \ln 8$ and that $H(p) < \ln 8$ for $100$ non-uniform draws. Finally it constructs a correlated joint on $\{0, 1\}^2$, computes $I(X; Y)$ via both formulas, verifies agreement, and shows $I = 0$ for the product distribution.

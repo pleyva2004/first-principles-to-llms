@@ -42,6 +42,24 @@ For $B \in \mathcal{F}$ with $\mathbb{P}(B) > 0$, the \emph{conditional probabil
 Events $A, B$ are \emph{independent} iff $\mathbb{P}(A \cap B) = \mathbb{P}(A)\,\mathbb{P}(B)$.
 \end{definition}
 
+\begin{definition}[Borel $\sigma$-algebra]
+\label{def:borel}
+The \emph{Borel $\sigma$-algebra} on $\mathbb{R}$, written $\mathcal{B}(\mathbb{R})$, is the smallest $\sigma$-algebra containing every open subset of $\mathbb{R}$. Elements of $\mathcal{B}(\mathbb{R})$ are called \emph{Borel sets}.
+\end{definition}
+
+\begin{proposition}[Existence of $\mathcal{B}(\mathbb{R})$]
+\label{prop:borel-exists}
+The intersection of an arbitrary family of $\sigma$-algebras on $\Omega$ is again a $\sigma$-algebra on $\Omega$. Hence $\mathcal{B}(\mathbb{R})$ is well-defined as the intersection of all $\sigma$-algebras on $\mathbb{R}$ that contain every open set.
+\end{proposition}
+
+\begin{proof}
+Let $\{\mathcal{F}_\alpha\}_{\alpha \in I}$ be any family of $\sigma$-algebras on $\Omega$, and set $\mathcal{F} := \bigcap_{\alpha} \mathcal{F}_\alpha$. We verify the three closure axioms. \emph{(i)} $\Omega \in \mathcal{F}_\alpha$ for every $\alpha$, so $\Omega \in \mathcal{F}$. \emph{(ii)} If $A \in \mathcal{F}$ then $A \in \mathcal{F}_\alpha$ for every $\alpha$, so $A^c \in \mathcal{F}_\alpha$ for every $\alpha$, so $A^c \in \mathcal{F}$. \emph{(iii)} If $A_1, A_2, \ldots \in \mathcal{F}$, then for each $\alpha$ the sequence lies in $\mathcal{F}_\alpha$, so $\bigcup_n A_n \in \mathcal{F}_\alpha$; hence $\bigcup_n A_n \in \mathcal{F}$. To apply this to $\mathcal{B}(\mathbb{R})$, note that the family of $\sigma$-algebras containing the open sets is non-empty since $2^\mathbb{R}$ is in it.
+\end{proof}
+
+\begin{remark}
+Borel sets include every open set, every closed set, every countable union of closed sets ($F_\sigma$), every countable intersection of open sets ($G_\delta$), and so on. In particular every interval $(a, b], [a, b], (a, b), (-\infty, x]$ is Borel. This is the natural $\sigma$-algebra against which random variables in Chapter~9 are measurable: $X^{-1}(B) \in \mathcal{F}$ for every $B \in \mathcal{B}(\mathbb{R})$.
+\end{remark}
+
 \subsection*{Elementary consequences}
 
 \begin{lemma}[Finite additivity, complement, monotonicity]

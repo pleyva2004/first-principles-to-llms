@@ -65,6 +65,26 @@ Marginalizing $y$ in the first sum gives $-\sum_x p_X(x) \ln p_X(x) = H(X)$; the
 *Proof.* By definition $I(X; Y) = D_{\mathrm{KL}}(p_{X,Y} \,\|\, p_X \otimes p_Y)$. Apply Theorem 11.1: this is $\geq 0$ with equality iff $p_{X,Y}(x,y) = p_X(x) p_Y(y)$ for all $x, y$ — exactly the definition of independence. Combined with the chain rule (Theorem 11.5), an equivalent identity is
 $$I(X; Y) = H(X) + H(Y) - H(X, Y) = H(Y) - H(Y \mid X). \quad \blacksquare$$
 
+**Definition (Total variation distance).** For two probability measures $P, Q$ on a measurable space $(\Omega, \mathcal{F})$,
+$$D_{TV}(P, Q) := \sup_{A \in \mathcal{F}} |P(A) - Q(A)|.$$
+For discrete distributions on a countable set $\mathcal{X}$, the supremum is attained on $A = \{x : P(x) \ge Q(x)\}$, giving the equivalent form
+$$D_{TV}(P, Q) = \tfrac{1}{2} \sum_{x} |P(x) - Q(x)| = \tfrac{1}{2}\|P - Q\|_1.$$
+
+**Theorem 11.7 (Pinsker's inequality).** For any two probability measures $P, Q$ on a common space with $Q$ absolutely continuous with respect to $P$ (so $D_{\mathrm{KL}}(P \,\|\, Q)$ is finite),
+$$D_{TV}(P, Q) \;\le\; \sqrt{\tfrac{1}{2}\, D_{\mathrm{KL}}(P \,\|\, Q)}.$$
+
+*Proof.* **Step 1 (Bernoulli case).** Define, for $p, q \in (0,1)$, the binary KL
+$$d(p \,\|\, q) := p \ln\tfrac{p}{q} + (1-p)\ln\tfrac{1-p}{1-q}.$$
+We claim $d(p \,\|\, q) \ge 2 (p-q)^2$. Fix $q$ and let $\varphi(p) := d(p \,\|\, q) - 2(p - q)^2$. Then $\varphi(q) = 0$, $\varphi'(p) = \ln\tfrac{p}{q} - \ln\tfrac{1-p}{1-q} - 4(p-q)$, and
+$$\varphi''(p) = \tfrac{1}{p(1-p)} - 4 \;\ge\; 4 - 4 = 0,$$
+since $p(1-p) \le 1/4$. So $\varphi$ is convex in $p$ with minimum at $p = q$ (since $\varphi'(q) = 0$), giving $\varphi(p) \ge 0$. Hence $d(p \,\|\, q) \ge 2 (p - q)^2$.
+
+**Step 2 (reduction to binary).** For any event $A \in \mathcal{F}$, set $p := P(A)$, $q := Q(A)$. The map $\omega \mapsto \mathbf{1}\{\omega \in A\}$ pushes $P, Q$ forward to $\mathrm{Bernoulli}(p)$ and $\mathrm{Bernoulli}(q)$. By the data-processing inequality for KL (which follows from the log-sum inequality, itself a consequence of Jensen applied to $\ln$),
+$$D_{\mathrm{KL}}(P \,\|\, Q) \;\ge\; d(p \,\|\, q) \;\ge\; 2(p-q)^2 = 2|P(A) - Q(A)|^2.$$
+Taking the supremum over $A$ gives $D_{\mathrm{KL}}(P \,\|\, Q) \ge 2\, D_{TV}(P, Q)^2$, and rearranging yields the claim. $\blacksquare$
+
+*Remark.* Pinsker is the tool that converts KL bounds (which information-theoretic objectives like RLHF's $D_{\mathrm{KL}}(\pi \,\|\, \pi_{\mathrm{ref}})$ control) into TV bounds (which couple to performance differences). Chapter 31's TRPO surrogate-improvement inequality uses it to turn a per-state KL penalty into a bound on the difference between state-visitation distributions $d^\pi$ and $d^{\pi'}$.
+
 ## Code sketch
 
 The notebook builds two categorical distributions $p, q$ over a 5-token alphabet, implements `entropy`, `cross_entropy`, and `kl` from their definitions, and verifies the decomposition $H(p, q) = H(p) + D_{\mathrm{KL}}(p \,\|\, q)$ to machine precision. It then samples 50 random Dirichlet pairs (seed 0) and confirms $D_{\mathrm{KL}} \geq 0$ for every pair, with $D_{\mathrm{KL}}(p \,\|\, p) = 0$. For maximum entropy, it computes $H(\text{uniform on 8})$ and checks it equals $\ln 8$, then sweeps 100 non-uniform draws and confirms $H < \ln 8$. Finally it builds a correlated joint on $\{0,1\}^2$, computes $I(X; Y)$ both as $H(X) + H(Y) - H(X, Y)$ and as $D_{\mathrm{KL}}(p_{X,Y} \,\|\, p_X \otimes p_Y)$, verifies they agree, and shows $I = 0$ for the product distribution.
